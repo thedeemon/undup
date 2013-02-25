@@ -142,6 +142,24 @@ void Layout(Box[] boxes, double x0, double y0, double width, double height)
 	}//switch boxes.length
 }
 
+struct Set(T)
+{
+	bool[T] data;
+
+	void add(T x) { data[x] = true; }
+	auto elems() { return data.byKey(); }
+}
+
+class Similar(C)
+{
+	Rel status;
+	C newer, same, older;
+
+	this(Rel stat) { status = stat; }
+}
+
+alias SimilarDirs = Similar!(Set!DirInfo);
+
 class MyPictureBox : PictureBox {
 	this() 
 	{
@@ -289,8 +307,14 @@ void vsearch(string fname)
 	foreach(r; reslist) reported[r.dir.ID] = true;
 	reslist = reslist.filter!(r => r.dir.parent.ID !in reported).array;
 
-	foreach(r; reslist) 
+	SimilarDirs[int] sim;
+	foreach(r; reslist) {
 		r.calcProfit();
+		if (r.same.length==0) { //i'm green (newest)
+			
+		} else { // i'm yellow (have exact copies)
+		}
+	}
 
 	//showResults!(DirInfo, di => sizes[di.ID])(reslist);
 

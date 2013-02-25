@@ -435,7 +435,7 @@ body
 	foreach(z; 0..n) {
 		auto row = mat.rel[z];		
 		if (!row.find(Rel.ImOlder).empty) continue;
-		auto select(Rel r) { return iota(0,n).filter!(k => k != z && row[k] == r).map!(k => ds[k]).array; } 
+		auto select(Rel r) { return iota(0,n).filter!(k => k != z && row[k] == r).map!(k => ds[k]).filter!(d => d.getSize > 0).array; } 
 		auto same = select(Rel.Same), older = select(Rel.ImNewer);
 		if (same.length > 0 || older.length > 0)
 			reslist ~= new ResultItem!T(ds[z], same, older);
