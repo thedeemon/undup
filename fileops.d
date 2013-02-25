@@ -404,13 +404,9 @@ class ResultItem(T) {
 		profit = -1;
 	}
 
-	void calcProfit(long[] sizes)
+	void calcProfit()
 	{
-		static if (is(T==DirInfo))
-			long sumsz(T[] arr) { return arr.map!(di => calcSize(di, sizes)).sum; }
-		else
-			static if (is(T==PFileInfo))
-				long sumsz(T[] arr) { return arr.map!(fi => fi.size).sum; }
+		long sumsz(T[] arr) { return arr.map!(di => di.getSize()).sum; }
 		profit = sumsz(same) + sumsz(older);
 	}
 }
@@ -446,7 +442,7 @@ body
 	}
 }
 
-long calcSize(DirInfo di, long[] sizes)
+/*long calcSize(DirInfo di, long[] sizes)
 {
 	if (sizes[di.ID] >= 0) return sizes[di.ID];
 	long fsizes = di.files.map!(fi => fi.size).sum;
@@ -454,7 +450,7 @@ long calcSize(DirInfo di, long[] sizes)
 	long sz = fsizes + dsizes;
 	sizes[di.ID] = sz;
 	return sz;
-}
+}*/
 
 void cluster(T, alias f)(T[] items)
 {
@@ -474,6 +470,12 @@ void cluster(T, alias f)(T[] items)
 	if (en > st) f(items[st..en+1]);
 }
 
+void on_inf_err(PFileInfo[] fs, InferenceError e) 
+{ 
+	foreach(k; e.abc)
+		writeln(fs[k].fullName());
+}
+
 void searchDups(string fname)
 {
 	DirInfo[] dirs = useIndex(readDump(fname));
@@ -486,11 +488,6 @@ void searchDups(string fname)
 	ResultItem!DirInfo[] reslist = [];
 	ResultItem!PFileInfo[] freslist = [];
 
-	void on_inf_err(PFileInfo[] fs, InferenceError e) 
-	{ 
-		foreach(k; e.abc)
-			writeln(fs[k].fullName());
-	}
 
 	void on_inf_error(DirInfo[] ds, InferenceError e)
 	{
@@ -505,8 +502,8 @@ void searchDups(string fname)
 
 	cluster!(PFileInfo, fs => analyseCluster!(PFileInfo, (a,b) => relate(a,b,rc), on_inf_err)(fs, freslist))(bigfiles);
 	foreach(r; freslist) 
-		r.calcProfit(null);
-	showResults!(PFileInfo, fi => fi.size)(freslist);
+		r.calcProfit();
+	showResults!(PFileInfo)(freslist);
 
 	cluster!(DirInfo, ds => analyseCluster!(DirInfo, (a,b) => compDirsCaching(a, b, rc), on_inf_error)(ds, reslist))(dirs);
 
@@ -514,16 +511,13 @@ void searchDups(string fname)
 	foreach(r; reslist) reported[r.dir.ID] = true;
 	reslist = reslist.filter!(r => r.dir.parent.ID !in reported).array;
 
-	long[] sizes;
-	sizes.length = getMaxID(dirs) + 1;
-	sizes[] = -1;
 	foreach(r; reslist) 
-		r.calcProfit(sizes);
+		r.calcProfit();
 
-	showResults!(DirInfo, di => sizes[di.ID])(reslist);
+	showResults!(DirInfo)(reslist);
 }
 
-void showResults(T, alias getsize)(ResultItem!T[] reslist)
+void showResults(T)(ResultItem!T[] reslist)
 {
 	reslist.sort!((a,b) => a.profit > b.profit);
 	foreach(res; reslist) {	
@@ -531,13 +525,13 @@ void showResults(T, alias getsize)(ResultItem!T[] reslist)
 		writefln("%s, profit=%s", res.dir.fullName(), res.profit);
 		if (res.same.length > 0) {
 			writeln(" is same as:");
-			foreach(di; res.same) writefln("  %s (%s)", di.fullName(), getsize(di));
+			foreach(di; res.same) writefln("  %s (%s)", di.fullName(), di.getSize());
 		}
-		if (res.older.map!(getsize).sum > 0) {
+		if (res.older.map!(d => d.getSize).sum > 0) {
 			writeln(" older versions:");
 			foreach(di; res.older)
-				if (getsize(di) > 0)
-					writefln("  %s (%s)", di.fullName(), getsize(di));
+				if (di.getSize() > 0)
+					writefln("  %s (%s)", di.fullName(), di.getSize());
 		}		
 	}
 }

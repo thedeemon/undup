@@ -1,6 +1,6 @@
 module visual;
 import dfl.all, fileops, std.range, std.algorithm, std.stdio, std.math, std.c.windows.windows, dfl.internal.winapi,
-	std.string;
+	std.string, rel;
 immutable small_size = 4_000_000;
 
 string sizeString(long sz)
@@ -174,7 +174,6 @@ class Visual : dfl.form.Form
 		picBox.sizeMode = dfl.all.PictureBoxSizeMode.NORMAL;
 		picBox.bounds = dfl.all.Rect(0, 0, 1000, 700);
 		picBox.parent = this;
-		
 
 		lblFile = new dfl.label.Label();
 		lblFile.name = "lblFile";
@@ -259,6 +258,43 @@ void vsearch(string fname)
 	DirInfo[] topdirs = dirs.filter!(di => di.parent is null).array;
 	writeln("making box tree");
 	Box[] top = topdirs.map!(boxOfDir).array;
+
+	/*PFileInfo[] bigfiles = dirs.map!(
+									 di => di.files.filter!(fi => fi.size > 50_000_000L).map!(fi => new PFileInfo(fi, di))									 
+									 ).joiner.array;
+*/
+	auto rc = new RelCache();
+	ResultItem!DirInfo[] reslist = [];
+	//ResultItem!PFileInfo[] freslist = [];
+
+	void on_inf_error(DirInfo[] ds, InferenceError e)
+	{
+		foreach(k; e.abc)
+			writeln(ds[k].fullName());
+		foreach(ii; e.abc) {
+			foreach(jj; e.abc)
+				writef("%s ", rc.get(ds[ii].ID,ds[jj].ID));
+			writeln();
+		}
+	}
+
+	/*cluster!(PFileInfo, fs => analyseCluster!(PFileInfo, (a,b) => relate(a,b,rc), on_inf_err)(fs, freslist))(bigfiles);
+	foreach(r; freslist) 
+		r.calcProfit(null);
+	showResults!(PFileInfo, fi => fi.size)(freslist);*/
+
+	cluster!(DirInfo, ds => analyseCluster!(DirInfo, (a,b) => compDirsCaching(a, b, rc), on_inf_error)(ds, reslist))(dirs);
+
+	bool[int] reported;
+	foreach(r; reslist) reported[r.dir.ID] = true;
+	reslist = reslist.filter!(r => r.dir.parent.ID !in reported).array;
+
+	foreach(r; reslist) 
+		r.calcProfit();
+
+	//showResults!(DirInfo, di => sizes[di.ID])(reslist);
+
+
 	try
 	{
 		Application.enableVisualStyles();
