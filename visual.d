@@ -16,6 +16,7 @@ class Dummy : IFSObject {
 
 	string fullName() const { return parent is null ? "..." : parent.fullName() ~ "/..."; }	
 	long getSize() { return sz; }
+	int getID() { return -1; }
 
 	this(long _size, DirInfo _parent) { sz = _size; parent = _parent; }
 }
@@ -38,13 +39,18 @@ class Box {
 		if (subs !is null) Layout(subs, x0, y0, width, height);
 	}
 
-	void draw(void delegate(double x, double y, double w, double h) drawrect)
+	void draw(void delegate(double x, double y, double w, double h, Rel) drawrect, SimilarBoxes[int] sbx)
 	{
-		if (subs is null || subs.length==0) 
-			drawrect(x,y,w,h);
+		if (subs is null || subs.length==0) {
+			Rel r = Rel.Unknown;
+			int id = item.getID();
+			if (id in sbx)
+				r = sbx[id].status;
+			drawrect(x,y,w,h, r);
+		}
 		else
 			foreach(bx; subs)
-				bx.draw(drawrect);
+				bx.draw(drawrect, sbx);
 	}
 
 	Box findByPoint(int mx, int my, Box curParent, ref Box resultParent)
@@ -64,6 +70,17 @@ class Box {
 	Rect rect()
 	{
 		return Rect(cast(int)x, cast(int)y, cast(int)w, cast(int)h);
+	}
+
+	void addDirsToMap(ref Box[int] index)
+	{
+		int id = item.getID();
+		if (id > -1) {
+			index[id] = this;
+			if (subs !is null)
+				foreach(bx; subs)
+					bx.addDirsToMap(index);
+		}
 	}
 }
 
@@ -147,6 +164,7 @@ struct Set(T)
 	bool[T] data;
 
 	void add(T x) { data[x] = true; }
+	void addMany(R)(R rng) { foreach(x; rng) data[x] = true; }
 	auto elems() { return data.byKey(); }
 }
 
@@ -156,15 +174,41 @@ class Similar(C)
 	C newer, same, older;
 
 	this(Rel stat) { status = stat; }
+
+	Similar!D fmap(D)(D delegate(C) f)
+	{
+		auto s = new Similar!D(status);
+		s.newer = f(newer);
+		s.same = f(same);
+		s.older = f(older);
+		return s;
+	}
 }
 
-alias SimilarDirs = Similar!(Set!DirInfo);
+alias SimilarDirs = Similar!(Set!int);
+alias SimilarBoxes = Similar!(Box[]);
+
+SimilarBoxes simBoxesOfDirs(SimilarDirs s, Box[int] boxIndex)
+{
+	return s.fmap!(Box[])(set => set.elems.map!(id => boxIndex[id]).array);
+}
 
 class MyPictureBox : PictureBox {
 	this() 
 	{
 		super();
 		setStyle(ControlStyles.OPAQUE, true);
+	}
+}
+
+int relColor(Rel r)
+{
+	final switch(r) {
+		case Rel.Unknown:   return 0x010101;
+		case Rel.ImNewer:   return 0x000100;
+		case Rel.ImOlder:   return 0x000001;
+		case Rel.Same:      return 0x000101;
+		case Rel.Different: return 0x000000;
 	}
 }
 
@@ -175,9 +219,11 @@ class Visual : dfl.form.Form
 	dfl.label.Label lblFile;
 	Rect[] volumeRects;
 	Rect resParentRect;
+	SimilarBoxes[int] simboxes;
 
-	this(Box[] _top) {
+	this(Box[] _top, SimilarBoxes[int] sbx) {
 		top = _top;
+		simboxes = sbx;
 
 		initializeVisual();
 	}
@@ -215,24 +261,25 @@ class Visual : dfl.form.Form
 		int[] data;
 		data.length = w*h;
 
-		void drawBar(double x0, double y0, double dx, double dy)
+		void drawBar(double x0, double y0, double dx, double dy, Rel r)
 		{
 			int iy0 = cast(int)y0, ix0 = cast(int)x0, ix1 = cast(int) (x0 + dx), iy1 = cast(int) (y0+dy);
 			if (ix1 >= w) ix1 = w;
 			if (iy1 >= h) iy1 = h;
+			int clr = relColor(r);
 			foreach(iy; iy0 .. iy1) {
 				real ky = sin(3 * cast(real)(iy - iy0) / dy);
 				int di = iy * w + ix0;
 				foreach(ix; ix0 .. ix1) {
 					real kx = sin(3 * cast(real)(ix - ix0) / dx);
 					int c = cast(int)(kx * ky * 200) + 50;
-					data[di++] = (c << 16) | (c << 8) | c;
+					data[di++] = c * clr;
 				}
 			}
 		}
 
 		foreach(bx; top)
-			bx.draw(&drawBar);
+			bx.draw(&drawBar, simboxes);
 
 		SetBitmapBits(hbm, data.length*4, data.ptr);
 		delete data;		
@@ -267,6 +314,8 @@ class Visual : dfl.form.Form
 	}
 
 }//class Visual
+
+auto ids(DirInfo[] arr) { return arr.map!(di => di.ID); }
 
 void vsearch(string fname)
 {
@@ -308,14 +357,41 @@ void vsearch(string fname)
 	reslist = reslist.filter!(r => r.dir.parent.ID !in reported).array;
 
 	SimilarDirs[int] sim;
-	foreach(r; reslist) {
-		r.calcProfit();
-		if (r.same.length==0) { //i'm green (newest)
-			
-		} else { // i'm yellow (have exact copies)
+
+	void addOlder(R)(R old_ids, int myid)
+	{
+		foreach(id; old_ids) {
+			if (id in sim) {
+				sim[id].newer.add(myid);
+			} else {
+				auto os = new SimilarDirs(Rel.ImOlder);
+				os.newer.add(myid);
+				sim[id] = os;
+			}
 		}
 	}
 
+	foreach(r; reslist) {
+		r.calcProfit();
+		SimilarDirs s;
+		if (r.same.length==0) { //i'm green (newest)
+			s = new SimilarDirs(Rel.ImNewer);
+		} else { // i'm yellow (have exact copies)
+			s = new SimilarDirs(Rel.Same);
+			s.same.addMany(r.same.ids);
+		}
+		s.older.addMany(r.older.ids);
+		sim[r.dir.ID] = s;
+		addOlder(r.older.ids, r.dir.ID);
+	}
+
+	Box[int] boxIndex;
+	foreach(bx; top)
+		bx.addDirsToMap(boxIndex);
+
+	SimilarBoxes[int] simboxes;
+	foreach(id; sim.byKey)
+		simboxes[id] = simBoxesOfDirs(sim[id], boxIndex);
 	//showResults!(DirInfo, di => sizes[di.ID])(reslist);
 
 
@@ -323,7 +399,7 @@ void vsearch(string fname)
 	{
 		Application.enableVisualStyles();
 		//@  Other application initialization code here.
-		Application.run(new Visual(top));
+		Application.run(new Visual(top, simboxes));
 	}
 	catch(Throwable o)
 	{
