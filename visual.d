@@ -28,10 +28,14 @@ class Box {
 	IFSObject item;
 	double x,y, w,h;
 	Box[] subs;
+	Box parent;
+	SimilarBoxes similar;
 
 	this(IFSObject fsobject, Box[] _subs)
 	{
 		item = fsobject; subs = _subs;
+		foreach(bx; subs)
+			bx.parent = this;
 	}
 
 	@property size() { return item.getSize(); }
@@ -42,27 +46,34 @@ class Box {
 		if (subs !is null) Layout(subs, x0, y0, width, height);
 	}
 
-	void draw(DrawFun drawrect, Rel delegate(IFSObject) colors)
+	void draw(DrawFun drawrect, SimilarBoxes delegate(IFSObject) getsim)
 	{
-		Rel r = colors(item);		
+		SimilarBoxes sb = getsim(item);	
+		Rel r = Rel.Unknown;
+		if (sb !is null) {
+			similar = sb;
+			r = sb.status;
+		}
+		
 		if (nada(subs)) 
 			drawrect(x,y,w,h, r, this);
 		else
 			if (r == Rel.Unknown)
 				foreach(bx; subs)
-					bx.draw(drawrect, colors);
+					bx.draw(drawrect, getsim);
 			else
 				foreach(bx; subs)
-					bx.draw2(drawrect, r);
+					bx.draw2(drawrect, sb);
 	}
 
-	void draw2(DrawFun drawrect, Rel r)
+	void draw2(DrawFun drawrect, SimilarBoxes sb)
 	{
+		similar = sb;
 		if (nada(subs)) 
-			drawrect(x,y,w,h, r, this);
+			drawrect(x,y,w,h, sb.status, this);
 		else
 			foreach(bx; subs)
-				bx.draw2(drawrect, r);
+				bx.draw2(drawrect, sb);
 	}
 
 	Box findByPoint(int mx, int my, Box curParent, ref Box resultParent)
@@ -240,18 +251,18 @@ int relColor(Rel r)
 class Coloring : IAsker {
 	SimilarBoxes[int] simboxes;
 	SimilarBoxes[string] fsimboxes;
-	Rel r;
+	SimilarBoxes sb;
 
 	this(SimilarBoxes[int] sbx, SimilarBoxes[string] fsbx) {
 		simboxes = sbx;
 		fsimboxes = fsbx;
 	}
 
-	void ImInt(int id) { if (id in simboxes) r = simboxes[id].status; }
+	void ImInt(int id) { if (id in simboxes) sb = simboxes[id]; }
 	void ImString(string name) 
 	{
 		auto p = name in fsimboxes;
-		if (p !is null) r = p.status;
+		if (p !is null) sb = *p;
 	}
 }
 
@@ -263,8 +274,12 @@ class Visual : dfl.form.Form
 	Rect[] volumeRects;
 	Rect resParentRect;
 	Coloring coloring;
+	Box[] boxPixMap;
+	int W,H;
+	SimilarBoxes curSimBoxes;
 
 	this(Box[] _top, SimilarBoxes[int] sbx, SimilarBoxes[string] fsbx) {
+		W = 1000; H = 700;
 		top = _top;
 		coloring = new Coloring(sbx, fsbx);
 
@@ -279,14 +294,14 @@ class Visual : dfl.form.Form
 		picBox = new MyPictureBox();
 		picBox.name = "picBox";
 		picBox.sizeMode = dfl.all.PictureBoxSizeMode.NORMAL;
-		picBox.bounds = dfl.all.Rect(0, 0, 1000, 700);
+		picBox.bounds = dfl.all.Rect(0, 0, W, H);
 		picBox.parent = this;
 
 		lblFile = new dfl.label.Label();
 		lblFile.name = "lblFile";
 		lblFile.text = "---";
 		lblFile.textAlign = dfl.all.ContentAlignment.MIDDLE_LEFT;
-		lblFile.bounds = dfl.all.Rect(0, 700, 1000, 24);
+		lblFile.bounds = dfl.all.Rect(0, H, 1000, 24);
 		lblFile.parent = this;
 
 		picBox.mouseMove ~= &OnMouseMove;
@@ -297,12 +312,13 @@ class Visual : dfl.form.Form
 
 	void displayBoxes()
 	{
-		int w = 1000, h = 700;
+		int w = W, h = H;
 		Layout(top, 0.0,0.0,w,h);
 
 		HBITMAP hbm = CreateCompatibleBitmap(Graphics.getScreen().handle, w, h);
 		int[] data;
 		data.length = w*h;
+		boxPixMap.length = w*h;
 
 		void drawBar(double x0, double y0, double dx, double dy, Rel r, Box bx)
 		{
@@ -316,20 +332,22 @@ class Visual : dfl.form.Form
 				foreach(ix; ix0 .. ix1) {
 					real kx = sin(3 * cast(real)(ix - ix0) / dx);
 					int c = cast(int)(kx * ky * 200) + 50;
-					data[di++] = c * clr;
+					data[di] = c * clr;
+					boxPixMap[di] = bx;
+					di++;
 				}
 			}
 		}
 
-		Rel colors(IFSObject item) 
+		SimilarBoxes getsim(IFSObject item) 
 		{ 
-			coloring.r = Rel.Unknown;
+			coloring.sb = null;
 			item.tell(coloring);
-			return coloring.r;
+			return coloring.sb;
 		}
 
 		foreach(bx; top)
-			bx.draw(&drawBar, &colors);
+			bx.draw(&drawBar, &getsim);
 
 		SetBitmapBits(hbm, data.length*4, data.ptr);
 		delete data;		
@@ -340,25 +358,45 @@ class Visual : dfl.form.Form
 
 	void OnMouseMove(Control c, MouseEventArgs ma)
 	{
-		if (ma.x < 1000 && ma.y < 700) {
-			Box resParent;
-			auto bxs = top.map!(b => b.findByPoint(ma.x, ma.y, null, resParent)).find!"a !is null";
-			if (!bxs.empty) {
-				lblFile.text = format("%s (%s, parent: %s)", bxs[0].item.fullName(), bxs[0].item.getSize.sizeString,
+		if (ma.x < W && ma.y < H) {
+			Box box = boxPixMap[ma.y * W + ma.x];
+			//auto bxs = top.map!(b => b.findByPoint(ma.x, ma.y, null, resParent)).find!"a !is null";
+			if (box !is null) {
+				Box resParent = box.parent;
+				lblFile.text = format("%s (%s, parent: %s)", box.item.fullName(), box.item.getSize.sizeString,
 									  resParent is null ? "-" : resParent.item.getSize.sizeString);
+				bool redraw = false;
 				if (resParent !is null) { 
 					resParentRect = resParent.rect;
-					picBox.invalidate();
+					redraw = true;					
 				}
+				if (curSimBoxes != box.similar) {
+					curSimBoxes = box.similar;
+					redraw = true;
+				}
+				if (redraw)
+					picBox.invalidate();
 			}
 		}
 	}
 
 	void OnPicPaint(Control c, PaintEventArgs pa)
 	{
-		scope Pen p = new Pen(Color.fromRgb(0xFF));
+		if (curSimBoxes !is null) {
+			scope greenbr = new SolidBrush(Color.fromRgb(0x80FF80));
+			scope yellowbr = new SolidBrush(Color.fromRgb(0x80FFFF));
+			scope redbr = new SolidBrush(Color.fromRgb(0x8080FF));
+			foreach(bx; curSimBoxes.newer)
+				pa.graphics.fillRectangle(greenbr, bx.rect);
+			foreach(bx; curSimBoxes.same)
+				pa.graphics.fillRectangle(yellowbr, bx.rect);
+			foreach(bx; curSimBoxes.older)
+				pa.graphics.fillRectangle(redbr, bx.rect);
+		}
+
+		scope Pen redpen = new Pen(Color.fromRgb(0xFF));
 		foreach(rc; volumeRects) 
-			pa.graphics.drawRectangle(p, rc);
+			pa.graphics.drawRectangle(redpen, rc);
 		scope Pen yellow = new Pen(Color.fromRgb(0xFFFF));
 		pa.graphics.drawRectangle(yellow, resParentRect);
 	}
