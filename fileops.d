@@ -59,10 +59,16 @@ void loadArray(T)(ref T[] arr, MemoryStream st)
 	}
 }
 
+interface IAsker {
+	void ImInt(int id);
+	void ImString(string name);
+}
+
 interface IFSObject {
-	string fullName() const;
+	string fullName();
 	long getSize();
 	int getID();
+	void tell(IAsker asker);
 }
 
 class FileInfo {
@@ -88,6 +94,7 @@ class FileInfo {
 
 class PFileInfo : FileInfo, IFSObject {
 	DirInfo parent;
+	string cached_fullname;
 
 	this(FileInfo fi, DirInfo _parent)
 	{
@@ -95,13 +102,17 @@ class PFileInfo : FileInfo, IFSObject {
 		parent = _parent;
 	}
 
-	string fullName() const
+	string fullName() 
 	{
-		return parent is null ? name : parent.fullName() ~ "/" ~ name;
+		if (parent is null) return name;
+		if (cached_fullname is null) 
+			cached_fullname = parent.fullName() ~ "/" ~ name;
+		return cached_fullname;
 	}
 
 	long getSize() { return size; }
 	int getID() { return -1; }
+	void tell(IAsker asker) { asker.ImString(fullName()); }
 }
 
 class DirInfoBase {
@@ -151,6 +162,7 @@ class DirInfo : DirInfoBase, IFSObject {
 	DirInfo parent;
 	DirInfo[] subdirs;
 	private long total_size;
+	string cached_fullname;
 
 	this(int _ID, DirInfo _parent, string _name, DirInfo[] _subdirs, FileInfo[] _files)
 	{
@@ -165,10 +177,12 @@ class DirInfo : DirInfoBase, IFSObject {
 		return format("ID: %s, parent: %s, Name: %s\n full: %s\n sub: %s\n files: %s", ID, parent.name, name, fullName(), subdirs, files);
 	}
 
-	string fullName() const
+	string fullName() 
 	{
 		if (parent is null) return name;
-		return parent.fullName() ~ "/" ~ name;
+		if (cached_fullname is null) 
+			cached_fullname = parent.fullName() ~ "/" ~ name;
+		return cached_fullname;
 	}
 
 	long getSize()
@@ -181,6 +195,7 @@ class DirInfo : DirInfoBase, IFSObject {
 	}
 
 	int getID() { return ID; }
+	void tell(IAsker asker) { asker.ImInt(ID); }
 }
 
 void makeDump(string fname, string volumeName)
@@ -445,7 +460,7 @@ body
 		if (!row.find(Rel.ImOlder).empty) continue;
 		auto select(Rel r) { return iota(0,n).filter!(k => k != z && row[k] == r).map!(k => ds[k]).filter!(d => d.getSize > 0).array; } 
 		auto same = select(Rel.Same), older = select(Rel.ImNewer);
-		if (!nada(same) || !nada(older))
+		if (!nada(same) || !nada(older)) 
 			reslist ~= new ResultItem!T(ds[z], same, older);
 	}
 }

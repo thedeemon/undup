@@ -14,12 +14,15 @@ class Dummy : IFSObject {
 	long sz;
 	DirInfo parent;
 
-	string fullName() const { return parent is null ? "..." : parent.fullName() ~ "/..."; }	
+	string fullName()  { return parent is null ? "..." : parent.fullName() ~ "/..."; }	
 	long getSize() { return sz; }
 	int getID() { return -1; }
 
 	this(long _size, DirInfo _parent) { sz = _size; parent = _parent; }
+	void tell(IAsker asker) {}
 }
+
+alias DrawFun = void delegate(double x, double y, double w, double h, Rel, Box);
 
 class Box {
 	IFSObject item;
@@ -39,18 +42,27 @@ class Box {
 		if (subs !is null) Layout(subs, x0, y0, width, height);
 	}
 
-	void draw(void delegate(double x, double y, double w, double h, Rel) drawrect, SimilarBoxes[int] sbx)
+	void draw(DrawFun drawrect, Rel delegate(IFSObject) colors)
 	{
-		if (subs is null || subs.length==0) {
-			Rel r = Rel.Unknown;
-			int id = item.getID();
-			if (id in sbx)
-				r = sbx[id].status;
-			drawrect(x,y,w,h, r);
-		}
+		Rel r = colors(item);		
+		if (nada(subs)) 
+			drawrect(x,y,w,h, r, this);
+		else
+			if (r == Rel.Unknown)
+				foreach(bx; subs)
+					bx.draw(drawrect, colors);
+			else
+				foreach(bx; subs)
+					bx.draw2(drawrect, r);
+	}
+
+	void draw2(DrawFun drawrect, Rel r)
+	{
+		if (nada(subs)) 
+			drawrect(x,y,w,h, r, this);
 		else
 			foreach(bx; subs)
-				bx.draw(drawrect, sbx);
+				bx.draw2(drawrect, r);
 	}
 
 	Box findByPoint(int mx, int my, Box curParent, ref Box resultParent)
@@ -81,6 +93,18 @@ class Box {
 				foreach(bx; subs)
 					bx.addDirsToMap(index);
 		}
+	}
+
+	void addFilesToMap(ref Box[string] index)
+	{
+		int id = item.getID();
+		if (id == -1) {
+			if (item.fullName == "...") return;
+			index[item.fullName] = this;
+		}
+		if (subs !is null)
+			foreach(bx; subs)
+				bx.addFilesToMap(index);
 	}
 }
 
@@ -187,10 +211,11 @@ class Similar(C)
 
 alias SimilarDirs = Similar!(Set!int);
 alias SimilarBoxes = Similar!(Box[]);
+alias SimilarFiles = Similar!(Set!string);
 
-SimilarBoxes simBoxesOfDirs(SimilarDirs s, Box[int] boxIndex)
+SimilarBoxes simBoxesOfSets(T)(Similar!(Set!T) s, Box[T] boxIndex)
 {
-	return s.fmap!(Box[])(set => set.elems.map!(id => boxIndex[id]).array);
+	return s.fmap!(Box[])(set => set.data.keys.map!(id => boxIndex.get(id,null)).filter!(p => p !is null).array);
 }
 
 class MyPictureBox : PictureBox {
@@ -206,9 +231,27 @@ int relColor(Rel r)
 	final switch(r) {
 		case Rel.Unknown:   return 0x010101;
 		case Rel.ImNewer:   return 0x000100;
-		case Rel.ImOlder:   return 0x000001;
-		case Rel.Same:      return 0x000101;
+		case Rel.ImOlder:   return 0x010000;
+		case Rel.Same:      return 0x010100;
 		case Rel.Different: return 0x000000;
+	}
+}
+
+class Coloring : IAsker {
+	SimilarBoxes[int] simboxes;
+	SimilarBoxes[string] fsimboxes;
+	Rel r;
+
+	this(SimilarBoxes[int] sbx, SimilarBoxes[string] fsbx) {
+		simboxes = sbx;
+		fsimboxes = fsbx;
+	}
+
+	void ImInt(int id) { if (id in simboxes) r = simboxes[id].status; }
+	void ImString(string name) 
+	{
+		auto p = name in fsimboxes;
+		if (p !is null) r = p.status;
 	}
 }
 
@@ -219,11 +262,11 @@ class Visual : dfl.form.Form
 	dfl.label.Label lblFile;
 	Rect[] volumeRects;
 	Rect resParentRect;
-	SimilarBoxes[int] simboxes;
+	Coloring coloring;
 
-	this(Box[] _top, SimilarBoxes[int] sbx) {
+	this(Box[] _top, SimilarBoxes[int] sbx, SimilarBoxes[string] fsbx) {
 		top = _top;
-		simboxes = sbx;
+		coloring = new Coloring(sbx, fsbx);
 
 		initializeVisual();
 	}
@@ -261,7 +304,7 @@ class Visual : dfl.form.Form
 		int[] data;
 		data.length = w*h;
 
-		void drawBar(double x0, double y0, double dx, double dy, Rel r)
+		void drawBar(double x0, double y0, double dx, double dy, Rel r, Box bx)
 		{
 			int iy0 = cast(int)y0, ix0 = cast(int)x0, ix1 = cast(int) (x0 + dx), iy1 = cast(int) (y0+dy);
 			if (ix1 >= w) ix1 = w;
@@ -278,8 +321,15 @@ class Visual : dfl.form.Form
 			}
 		}
 
+		Rel colors(IFSObject item) 
+		{ 
+			coloring.r = Rel.Unknown;
+			item.tell(coloring);
+			return coloring.r;
+		}
+
 		foreach(bx; top)
-			bx.draw(&drawBar, simboxes);
+			bx.draw(&drawBar, &colors);
 
 		SetBitmapBits(hbm, data.length*4, data.ptr);
 		delete data;		
@@ -316,25 +366,30 @@ class Visual : dfl.form.Form
 }//class Visual
 
 auto ids(DirInfo[] arr) { return arr.map!(di => di.ID); }
+auto names(PFileInfo[] arr) { return arr.map!(fi => fi.fullName()); }
+
+void addOlder(R,I,S)(R old_ids, I myid, ref S[I] sim)
+{
+	foreach(id; old_ids) {
+		if (id in sim) {
+			sim[id].newer.add(myid);
+		} else {
+			auto os = new S(Rel.ImOlder);
+			os.newer.add(myid);
+			sim[id] = os;
+		}
+	}
+}
 
 void vsearch(string fname)
 {
 	writeln("reading ", fname);
 	DirInfo[] dirs = useIndex(readDump(fname));
-	writeln("getting top");
-	DirInfo[] topdirs = dirs.filter!(di => di.parent is null).array;
-	writeln("making box tree");
-	Box[] top = topdirs.map!(boxOfDir).array;
 
-	/*PFileInfo[] bigfiles = dirs.map!(
-									 di => di.files.filter!(fi => fi.size > 50_000_000L).map!(fi => new PFileInfo(fi, di))									 
-									 ).joiner.array;
-*/
 	auto rc = new RelCache();
 	ResultItem!DirInfo[] reslist = [];
-	//ResultItem!PFileInfo[] freslist = [];
 
-	void on_inf_error(DirInfo[] ds, InferenceError e)
+	void on_inf_error2(DirInfo[] ds, InferenceError e)
 	{
 		foreach(k; e.abc)
 			writeln(ds[k].fullName());
@@ -345,32 +400,31 @@ void vsearch(string fname)
 		}
 	}
 
-	/*cluster!(PFileInfo, fs => analyseCluster!(PFileInfo, (a,b) => relate(a,b,rc), on_inf_err)(fs, freslist))(bigfiles);
-	foreach(r; freslist) 
-		r.calcProfit(null);
-	showResults!(PFileInfo, fi => fi.size)(freslist);*/
+	auto comp(DirInfo a, DirInfo b) { return compDirsCaching(a, b, rc); }
 
-	cluster!(DirInfo, ds => analyseCluster!(DirInfo, (a,b) => compDirsCaching(a, b, rc), on_inf_error)(ds, reslist))(dirs);
+	cluster!(DirInfo, ds => analyseCluster!(DirInfo, comp, on_inf_error2)(ds, reslist))(dirs);
 
 	bool[int] reported;
 	foreach(r; reslist) reported[r.dir.ID] = true;
 	reslist = reslist.filter!(r => r.dir.parent.ID !in reported).array;
 
+	PFileInfo[] bigfiles = dirs.map!(
+									 di => di.files.filter!(fi => fi.size > 50_000_000L).map!(fi => new PFileInfo(fi, di))									 
+									 ).joiner.array;
+	ResultItem!PFileInfo[] freslist = [];
+
+	void on_inf_err3(PFileInfo[] fs, InferenceError e) {}
+
+	auto compf(PFileInfo a, PFileInfo b) { return relate(a,b,rc); }
+	auto anc(PFileInfo[] fs) { return analyseCluster!(PFileInfo, compf, on_inf_err3)(fs, freslist); }
+	cluster!(PFileInfo, anc)(bigfiles);
+
+	writeln("getting top");
+	DirInfo[] topdirs = dirs.filter!(di => di.parent is null).array;
+	writeln("making box tree");
+	Box[] top = topdirs.map!(boxOfDir).array;
+
 	SimilarDirs[int] sim;
-
-	void addOlder(R)(R old_ids, int myid)
-	{
-		foreach(id; old_ids) {
-			if (id in sim) {
-				sim[id].newer.add(myid);
-			} else {
-				auto os = new SimilarDirs(Rel.ImOlder);
-				os.newer.add(myid);
-				sim[id] = os;
-			}
-		}
-	}
-
 	foreach(r; reslist) {
 		r.calcProfit();
 		SimilarDirs s;
@@ -382,24 +436,46 @@ void vsearch(string fname)
 		}
 		s.older.addMany(r.older.ids);
 		sim[r.dir.ID] = s;
-		addOlder(r.older.ids, r.dir.ID);
+		addOlder(r.older.ids, r.dir.ID, sim);
 	}
 
 	Box[int] boxIndex;
-	foreach(bx; top)
+	Box[string] fboxIndex;
+	foreach(bx; top) {
 		bx.addDirsToMap(boxIndex);
+		bx.addFilesToMap(fboxIndex);
+	}
 
 	SimilarBoxes[int] simboxes;
 	foreach(id; sim.byKey)
-		simboxes[id] = simBoxesOfDirs(sim[id], boxIndex);
+		simboxes[id] = simBoxesOfSets(sim[id], boxIndex);
 	//showResults!(DirInfo, di => sizes[di.ID])(reslist);
+
+	SimilarFiles[string] simf;
+	foreach(r; freslist) {
+		r.calcProfit();
+		SimilarFiles s;
+		if (r.same.length==0) { //i'm green (newest)
+			s = new SimilarFiles(Rel.ImNewer);
+		} else { // i'm yellow (have exact copies)
+			s = new SimilarFiles(Rel.Same);
+			s.same.addMany(r.same.names);
+		}
+		s.older.addMany(r.older.names);
+		simf[r.dir.fullName] = s;
+		addOlder(r.older.names, r.dir.fullName, simf);
+	}
+
+	SimilarBoxes[string] fsimboxes;
+	foreach(id; simf.byKey)
+		fsimboxes[id] = simBoxesOfSets(simf[id], fboxIndex);
 
 
 	try
 	{
 		Application.enableVisualStyles();
 		//@  Other application initialization code here.
-		Application.run(new Visual(top, simboxes));
+		Application.run(new Visual(top, simboxes, fsimboxes));
 	}
 	catch(Throwable o)
 	{
