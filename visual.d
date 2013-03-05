@@ -55,7 +55,7 @@ class Box {
 			r = sb.status;
 		}
 		
-		if (nada(subs)) 
+		if (subs.length==0) 
 			drawrect(x,y,w,h, r, this);
 		else
 			if (r == Rel.Unknown)
@@ -69,7 +69,7 @@ class Box {
 	void draw2(DrawFun drawrect, SimilarBoxes sb)
 	{
 		similar = sb;
-		if (nada(subs)) 
+		if (subs.length==0) 
 			drawrect(x,y,w,h, sb.status, this);
 		else
 			foreach(bx; subs)

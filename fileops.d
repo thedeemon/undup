@@ -327,13 +327,11 @@ bool sameTime(in FileInfo f1, in FileInfo f2) pure // t1,t2 in hnsecs, same if d
 	return truncTime(f1.modTime) == truncTime(f2.modTime);
 }
 
-bool nada(T)(T[] arr) { return arr is null || arr.length == 0; }
-
 Rel compareSeqs(T)(T[] left, T[] right, RelCache rc)
 {
-	if (nada(left) && nada(right)) return Rel.Same;
-	if (nada(left)) return Rel.ImOlder;
-	if (nada(right)) return Rel.ImNewer;
+	if (left.length==0 && right.length==0) return Rel.Same;
+	if (left.length==0) return Rel.ImOlder;
+	if (right.length==0) return Rel.ImNewer;
 
 	bool luniq = false, runiq = false, lnewer = false, rnewer = false;
 	int li = 0, ri = 0;
@@ -460,20 +458,10 @@ body
 		if (!row.find(Rel.ImOlder).empty) continue;
 		auto select(Rel r) { return iota(0,n).filter!(k => k != z && row[k] == r).map!(k => ds[k]).filter!(d => d.getSize > 0).array; } 
 		auto same = select(Rel.Same), older = select(Rel.ImNewer);
-		if (!nada(same) || !nada(older)) 
+		if (same.length > 0 || older.length > 0) 
 			reslist ~= new ResultItem!T(ds[z], same, older);
 	}
 }
-
-/*long calcSize(DirInfo di, long[] sizes)
-{
-	if (sizes[di.ID] >= 0) return sizes[di.ID];
-	long fsizes = di.files.map!(fi => fi.size).sum;
-	long dsizes = di.subdirs.map!(d => calcSize(d, sizes)).sum;
-	long sz = fsizes + dsizes;
-	sizes[di.ID] = sz;
-	return sz;
-}*/
 
 void cluster(T, alias f)(T[] items)
 {

@@ -16,13 +16,19 @@ class RelCache {
 
 	void add(int leftID, int rightID, Rel r)
 	{
-		cache[tuple(leftID, rightID)] = r;
-		cache[tuple(rightID, leftID)] = inv(r);
+		if (r == Rel.Different) return; //save memory, don't cache Different
+		if (leftID <= rightID)
+			cache[tuple(leftID, rightID)] = r;
+		else
+			cache[tuple(rightID, leftID)] = inv(r);
 	}
 
 	Rel get(int leftID, int rightID)
 	{
-		return cache.get(tuple(leftID, rightID), Rel.Unknown);
+		if (leftID <= rightID)
+			return cache.get(tuple(leftID, rightID), Rel.Unknown);
+		else
+			return cache.get(tuple(rightID, leftID), Rel.Unknown).inv;
 	}
 }
 
@@ -73,7 +79,7 @@ class RelMat {
 	this(int n) 
 	{
 		N = n;
-		Rel[] mkrow(int i) { return iota(0,n).map!(j => i==j ? Rel.Same : Rel.Unknown).array; }
+		Rel[] mkrow(int i) { return iota(0,n).map!((int j) => i==j ? Rel.Same : Rel.Unknown).array; }
 		rel = iota(0,n).map!mkrow.array;
 		curRow = 1;
 	}
