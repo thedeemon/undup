@@ -95,6 +95,20 @@ class Box {
 		return Rect(cast(int)x, cast(int)y, cast(int)w, cast(int)h);
 	}
 
+	Rect[] pathRects()
+	{
+		Rect[] rcs;
+		addAncestorsRects(rcs);
+		return rcs;
+	}
+
+	private void addAncestorsRects(ref Rect[] rcs)
+	{
+		if (parent !is null)
+			parent.addAncestorsRects(rcs);
+		rcs ~= rect();
+	}
+
 	void addDirsToMap(ref Box[int] index)
 	{
 		int id = item.getID();
@@ -272,11 +286,12 @@ class Visual : dfl.form.Form
 	MyPictureBox picBox;
 	dfl.label.Label lblFile;
 	Rect[] volumeRects;
-	Rect resParentRect;
+	Rect[] pathRects;
 	Coloring coloring;
 	Box[] boxPixMap;
 	int W,H;
 	SimilarBoxes curSimBoxes;
+	Box lastHoveredBox;
 
 	this(Box[] _top, SimilarBoxes[int] sbx, SimilarBoxes[string] fsbx) {
 		W = 1000; H = 700;
@@ -361,21 +376,15 @@ class Visual : dfl.form.Form
 		if (ma.x < W && ma.y < H) {
 			Box box = boxPixMap[ma.y * W + ma.x];
 			//auto bxs = top.map!(b => b.findByPoint(ma.x, ma.y, null, resParent)).find!"a !is null";
-			if (box !is null) {
+			if (box !is null && box !is lastHoveredBox) {
+				lastHoveredBox = box;
 				Box resParent = box.parent;
 				lblFile.text = format("%s (%s, parent: %s)", box.item.fullName(), box.item.getSize.sizeString,
 									  resParent is null ? "-" : resParent.item.getSize.sizeString);
-				bool redraw = false;
-				if (resParent !is null) { 
-					resParentRect = resParent.rect;
-					redraw = true;					
-				}
-				if (curSimBoxes != box.similar) {
-					curSimBoxes = box.similar;
-					redraw = true;
-				}
-				if (redraw)
-					picBox.invalidate();
+				
+				pathRects = box.pathRects();				
+				curSimBoxes = box.similar;
+				picBox.invalidate();
 			}
 		}
 	}
@@ -397,8 +406,14 @@ class Visual : dfl.form.Form
 		scope Pen redpen = new Pen(Color.fromRgb(0xFF));
 		foreach(rc; volumeRects) 
 			pa.graphics.drawRectangle(redpen, rc);
-		scope Pen yellow = new Pen(Color.fromRgb(0xFFFF));
-		pa.graphics.drawRectangle(yellow, resParentRect);
+
+		int[8] colors = [0xFF, 0xFFFF, 0xFF00, 0xFF0000, 0xFF00FF, 0xFFFF00, 0xFFFFFF, 0x80FF];
+		int i = 0;
+		foreach(rc; pathRects) {
+			scope Pen pn = new Pen(Color.fromRgb(colors[i % $]));
+			pa.graphics.drawRectangle(pn, rc);
+			i++;
+		}
 	}
 
 }//class Visual
@@ -512,6 +527,7 @@ void vsearch(string fname)
 	try
 	{
 		Application.enableVisualStyles();
+		Application.autoCollect = false;
 		//@  Other application initialization code here.
 		Application.run(new Visual(top, simboxes, fsimboxes));
 	}
