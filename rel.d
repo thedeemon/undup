@@ -1,6 +1,6 @@
 module rel;
 import std.typecons, std.range, std.container, std.stdio, std.string, std.algorithm : map;
-enum Rel { Unknown, ImNewer, ImOlder, Same, Different }
+enum Rel : byte { Unknown, ImNewer, ImOlder, Same, Different }
 
 Rel inv(Rel x)
 {
@@ -21,6 +21,11 @@ class RelCache {
 			cache[tuple(leftID, rightID)] = r;
 		else
 			cache[tuple(rightID, leftID)] = inv(r);
+		auto n = cache.length;
+		if (n % 1000 == 0) {
+			writef("\rRC=%s     ", n);
+			stdout.flush();
+		}
 	}
 
 	Rel get(int leftID, int rightID)

@@ -441,6 +441,7 @@ body
 {
 	immutable int n = ds.length;
 	writefln("analyzing cluster of size %s with name %s", n, ds[0].name);
+	if (n > 2000) { writeln("skipped"); return; }
 	auto mat = new RelMat(n);
 	try {
 		int i,j;
