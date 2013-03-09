@@ -284,7 +284,11 @@ class Visual : dfl.form.Form
 {
 	Box[] top;
 	MyPictureBox picBox;
-	dfl.label.Label lblFile;
+	dfl.label.Label lblFile, lblStatus;
+	dfl.button.Button btnSearch, btnCancel;
+	dfl.progressbar.ProgressBar progressBar;
+
+
 	Rect[] volumeRects;
 	Rect[] pathRects;
 	Coloring coloring;
@@ -294,7 +298,7 @@ class Visual : dfl.form.Form
 	Box lastHoveredBox;
 
 	this(Box[] _top, SimilarBoxes[int] sbx, SimilarBoxes[string] fsbx) {
-		W = 1000; H = 700;
+		W = 1000; H = 670;
 		top = _top;
 		coloring = new Coloring(sbx, fsbx);
 
@@ -304,20 +308,42 @@ class Visual : dfl.form.Form
 	void initializeVisual()
 	{
 		text = "Visual search";
-		clientSize = dfl.all.Size(1040, 740);
+		clientSize = dfl.all.Size(1040, 730);
 
 		picBox = new MyPictureBox();
 		picBox.name = "picBox";
 		picBox.sizeMode = dfl.all.PictureBoxSizeMode.NORMAL;
-		picBox.bounds = dfl.all.Rect(0, 0, W, H);
+		picBox.bounds = dfl.all.Rect(0, 24, W, H);
 		picBox.parent = this;
 
 		lblFile = new dfl.label.Label();
 		lblFile.name = "lblFile";
 		lblFile.text = "---";
 		lblFile.textAlign = dfl.all.ContentAlignment.MIDDLE_LEFT;
-		lblFile.bounds = dfl.all.Rect(0, H, 1000, 24);
+		lblFile.bounds = dfl.all.Rect(0, H+24, 1000, 24);
 		lblFile.parent = this;
+
+		lblStatus = new dfl.label.Label();
+		lblStatus.name = "lblStatus";
+		lblStatus.bounds = dfl.all.Rect(0, 0, 384, 24);
+		lblStatus.parent = this;
+		//~DFL dfl.button.Button=btnSearch
+		btnSearch = new dfl.button.Button();
+		btnSearch.name = "btnSearch";
+		btnSearch.text = "Search";
+		btnSearch.bounds = dfl.all.Rect(392, 0, 72, 24);
+		btnSearch.parent = this;
+		//~DFL dfl.button.Button=btnCancel
+		btnCancel = new dfl.button.Button();
+		btnCancel.name = "btnCancel";
+		btnCancel.text = "Cancel";
+		btnCancel.bounds = dfl.all.Rect(704, 0, 56, 24);
+		btnCancel.parent = this;
+		//~DFL dfl.progressbar.ProgressBar=progressBar
+		progressBar = new dfl.progressbar.ProgressBar();
+		progressBar.name = "progressBar";
+		progressBar.bounds = dfl.all.Rect(472, 0, 224, 24);
+		progressBar.parent = this;
 
 		picBox.mouseMove ~= &OnMouseMove;
 		picBox.paint ~= &OnPicPaint;
