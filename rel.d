@@ -21,11 +21,6 @@ class RelCache {
 			cache[tuple(leftID, rightID)] = r;
 		else
 			cache[tuple(rightID, leftID)] = inv(r);
-		auto n = cache.length;
-		if (n % 1000 == 0) {
-			writef("\rRC=%s     ", n);
-			stdout.flush();
-		}
 	}
 
 	Rel get(int leftID, int rightID)

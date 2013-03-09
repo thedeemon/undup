@@ -440,10 +440,10 @@ in
 body
 {
 	immutable int n = ds.length;
-	if (talk)
+	static if (talk)
 		writefln("analyzing cluster of size %s with name %s", n, ds[0].name);
 	if (n > 2000) { 
-		if (talk) writeln("skipped"); 
+		static if (talk) writeln("skipped"); 
 		return; 
 	}
 	auto mat = new RelMat(n);

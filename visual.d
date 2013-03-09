@@ -1,6 +1,6 @@
 module visual;
 import dfl.all, fileops, std.range, std.algorithm, std.stdio, std.math, std.c.windows.windows, dfl.internal.winapi,
-	std.string, rel, std.concurrency;
+	std.string, rel, std.concurrency, core.time : dur;
 immutable small_size = 4_000_000;
 
 string sizeString(long sz)
@@ -363,14 +363,14 @@ class Visual : dfl.form.Form
 		timer.tick ~= &OnTimer;
 		timer.start();
 
-
+		Layout(top, 0.0,0.0, W,H);
+		volumeRects = top.map!(bx => bx.rect).array;
 		displayBoxes();
 	}
 
 	void displayBoxes()
 	{
-		int w = W, h = H;
-		Layout(top, 0.0,0.0,w,h);
+		int w = W, h = H;		
 
 		HBITMAP hbm = CreateCompatibleBitmap(Graphics.getScreen().handle, w, h);
 		int[] data;
@@ -408,8 +408,8 @@ class Visual : dfl.form.Form
 
 		SetBitmapBits(hbm, data.length*4, data.ptr);
 		delete data;		
-
-		volumeRects = top.map!(bx => bx.rect).array;
+		
+		//if (picBox.image !is null) delete picBox.image;
 		picBox.image = new Bitmap(hbm, true);
 	}
 
@@ -460,30 +460,60 @@ class Visual : dfl.form.Form
 
 	void OnTimer(Timer sender, EventArgs ea)
 	{
-		import core.time;
-		while(receiveTimeout(dur!"msecs"(0), &RcvMsgAnalyzing)) {}
+		while(receiveTimeout(dur!"msecs"(0), &RcvMsgAnalyzing, &RcvMsgSearchComplete)) {}
 	}
 
 	void StartSearch(Control, EventArgs)
 	{
 		btnSearch.visible = false;
 		btnCancel.visible = true;
-		//writeln("starting thread, my tid is ", thisTid);
-		//auto strt = (Tid t, shared(DirInfo[]) ds) { searchDups(ds, t); };
 		search_tid = spawn(&searchDups, cast(shared)dirs, thisTid);
 	}
 
 	void CancelSearch(Control, EventArgs)
 	{
+		search_tid.send(MsgCancel());
 		btnSearch.visible = true;
 		btnCancel.visible = false;
-		//...
+		progressBar.value = 0;
+		lblStatus.text = "search cancelled";
 	}
 
 	void RcvMsgAnalyzing(MsgAnalyzing m)
 	{
 		lblStatus.text = format("analyzing %s [%s]", m.name, m.sz);
 		progressBar.value = cast(int) (m.progress * 1000);
+	}
+
+	void RcvMsgSearchComplete(MsgSearchComplete m)
+	{
+		SimilarDirs[int] sim = cast(SimilarDirs[int]) m.sim;
+		SimilarFiles[string] simf = cast(SimilarFiles[string]) m.simf;
+
+		Box[int] boxIndex;
+		Box[string] fboxIndex;
+		foreach(bx; top) {
+			bx.addDirsToMap(boxIndex);
+			bx.addFilesToMap(fboxIndex);
+		}
+
+		SimilarBoxes[int] simboxes;
+		foreach(id; sim.byKey)
+			simboxes[id] = simBoxesOfSets(sim[id], boxIndex);
+
+		SimilarBoxes[string] fsimboxes;
+		foreach(id; simf.byKey)
+			fsimboxes[id] = simBoxesOfSets(simf[id], fboxIndex);
+
+		coloring = new Coloring(simboxes, fsimboxes);
+		btnCancel.visible = false;
+		progressBar.visible = false;
+		lblStatus.text = "";
+		displayBoxes();
+		picBox.bounds = dfl.all.Rect(0, 0, W, H);
+		picBox.invalidate();
+		lblFile.bounds = dfl.all.Rect(0, H, 1000, 24);
+		clientSize = dfl.all.Size(1040, 706);
 	}
 
 }//class Visual
@@ -511,6 +541,17 @@ struct MsgAnalyzing {
 	float progress;
 }
 
+struct MsgSearchComplete {
+	shared SimilarDirs[int] sim;
+	shared SimilarFiles[string] simf;
+}
+
+struct MsgCancel {}
+
+class Cancelled : Throwable {
+	this() { super(""); }
+}
+
 void searchDups(shared(DirInfo[]) _dirs, Tid gui_tid)
 {
 	DirInfo[] dirs = cast(DirInfo[]) _dirs;
@@ -535,79 +576,80 @@ void searchDups(shared(DirInfo[]) _dirs, Tid gui_tid)
 	auto comp(DirInfo a, DirInfo b) { return compDirsCaching(a, b, rc); }
 	void ancd(DirInfo[] ds, float prg) 
 	{
-		writeln("12");
+		//writeln("11");
+		while(receiveTimeout(dur!"msecs"(0), (MsgCancel m) { throw new Cancelled(); })) {}
+		//writeln("12");
 		gui_tid.send(MsgAnalyzing(ds[0].name, ds.length, prg * 0.75));
-		analyseCluster!(DirInfo, comp, on_inf_error2, true)(ds, reslist);
+		//writeln("13");
+		analyseCluster!(DirInfo, comp, on_inf_error2, false)(ds, reslist);
 	}
 	writeln("10");
-	cluster!(DirInfo, ancd)(dirs);
-	writeln("20");
+	try {
+		cluster!(DirInfo, ancd)(dirs);
+		writeln("20");
 
-	bool[int] reported;
-	foreach(r; reslist) reported[r.dir.ID] = true;
-	reslist = reslist.filter!(r => r.dir.parent.ID !in reported).array;
+		bool[int] reported;
+		foreach(r; reslist) reported[r.dir.ID] = true;
+		reslist = reslist.filter!(r => r.dir.parent.ID !in reported).array;
 
-	PFileInfo[] bigfiles = dirs.map!(
-									 di => di.files.filter!(fi => fi.size > 50_000_000L).map!(fi => new PFileInfo(fi, di))									 
-									 ).joiner.array;
-	ResultItem!PFileInfo[] freslist = [];
+		PFileInfo[] bigfiles = dirs.map!(
+										 di => di.files.filter!(fi => fi.size > 50_000_000L).map!(fi => new PFileInfo(fi, di))									 
+										 ).joiner.array;
+		ResultItem!PFileInfo[] freslist = [];
 
-	void on_inf_err3(PFileInfo[] fs, InferenceError e) {}
+		void on_inf_err3(PFileInfo[] fs, InferenceError e) {}
 
-	auto compf(PFileInfo a, PFileInfo b) { return relate(a,b,rc); }
-	void ancf(PFileInfo[] fs, float prg) 
-	{ 
-		send(gui_tid, MsgAnalyzing(fs[0].name, fs.length, 0.75 + prg * 0.25));
-		analyseCluster!(PFileInfo, compf, on_inf_err3, false)(fs, freslist); 
-	}
-	writeln("30");
-	cluster!(PFileInfo, ancf)(bigfiles);
-	writeln("40");
-
-	/*SimilarDirs[int] sim;
-	foreach(r; reslist) {
-		r.calcProfit();
-		SimilarDirs s;
-		if (r.same.length==0) { //i'm green (newest)
-			s = new SimilarDirs(Rel.ImNewer);
-		} else { // i'm yellow (have exact copies)
-			s = new SimilarDirs(Rel.Same);
-			s.same.addMany(r.same.ids);
+		auto compf(PFileInfo a, PFileInfo b) { return relate(a,b,rc); }
+		void ancf(PFileInfo[] fs, float prg) 
+		{ 
+			//writeln("31");
+			while(receiveTimeout(dur!"msecs"(0), (MsgCancel m) { throw new Cancelled(); })) {}
+			//writeln("32");
+			send(gui_tid, MsgAnalyzing(fs[0].name, fs.length, 0.75 + prg * 0.25));
+			//writeln("33");
+			analyseCluster!(PFileInfo, compf, on_inf_err3, false)(fs, freslist); 
 		}
-		s.older.addMany(r.older.ids);
-		sim[r.dir.ID] = s;
-		addOlder(r.older.ids, r.dir.ID, sim);
-	}
+		writeln("30");
+		cluster!(PFileInfo, ancf)(bigfiles);
+		writeln("40");
 
-	SimilarFiles[string] simf;
-	foreach(r; freslist) {
-		r.calcProfit();
-		SimilarFiles s;
-		if (r.same.length==0) { //i'm green (newest)
-			s = new SimilarFiles(Rel.ImNewer);
-		} else { // i'm yellow (have exact copies)
-			s = new SimilarFiles(Rel.Same);
-			s.same.addMany(r.same.names);
+		SimilarDirs[int] sim;
+		foreach(r; reslist) {
+			r.calcProfit();
+			SimilarDirs s;
+			if (r.same.length==0) { //i'm green (newest)
+				s = new SimilarDirs(Rel.ImNewer);
+			} else { // i'm yellow (have exact copies)
+				s = new SimilarDirs(Rel.Same);
+				s.same.addMany(r.same.ids);
+			}
+			s.older.addMany(r.older.ids);
+			sim[r.dir.ID] = s;
+			addOlder(r.older.ids, r.dir.ID, sim);
 		}
-		s.older.addMany(r.older.names);
-		simf[r.dir.fullName] = s;
-		addOlder(r.older.names, r.dir.fullName, simf);
+
+		SimilarFiles[string] simf;
+		foreach(r; freslist) {
+			r.calcProfit();
+			SimilarFiles s;
+			if (r.same.length==0) { //i'm green (newest)
+				s = new SimilarFiles(Rel.ImNewer);
+			} else { // i'm yellow (have exact copies)
+				s = new SimilarFiles(Rel.Same);
+				s.same.addMany(r.same.names);
+			}
+			s.older.addMany(r.older.names);
+			simf[r.dir.fullName] = s;
+			addOlder(r.older.names, r.dir.fullName, simf);
+		}
+
+		send(gui_tid, MsgSearchComplete(cast(shared)sim, cast(shared)simf));
+	} catch(Cancelled c) {
+		writeln("cancelled");
+	} catch(MailboxFull mf) {
+		writeln("mbox full");
 	}
-
-	Box[int] boxIndex;
-	Box[string] fboxIndex;
-	foreach(bx; top) {
-		bx.addDirsToMap(boxIndex);
-		bx.addFilesToMap(fboxIndex);
-	}
-
-	SimilarBoxes[int] simboxes;
-	foreach(id; sim.byKey)
-		simboxes[id] = simBoxesOfSets(sim[id], boxIndex);
-
-	SimilarBoxes[string] fsimboxes;
-	foreach(id; simf.byKey)
-		fsimboxes[id] = simBoxesOfSets(simf[id], fboxIndex);*/
+	writeln("search thread finishes");
 }
 
 void vsearch(string fname)
