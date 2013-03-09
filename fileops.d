@@ -432,7 +432,7 @@ class ResultItem(T) {
 
 //T[] notnull(T)(T[] a) { return a is null ? [] : a; }
 
-void analyseCluster(T, alias comp, alias on_error)(T[] ds, ref ResultItem!T[] reslist)
+void analyseCluster(T, alias comp, alias on_error, bool talk)(T[] ds, ref ResultItem!T[] reslist)
 in 
 {
 	assert(ds.length > 1);
@@ -440,8 +440,12 @@ in
 body
 {
 	immutable int n = ds.length;
-	writefln("analyzing cluster of size %s with name %s", n, ds[0].name);
-	if (n > 2000) { writeln("skipped"); return; }
+	if (talk)
+		writefln("analyzing cluster of size %s with name %s", n, ds[0].name);
+	if (n > 2000) { 
+		if (talk) writeln("skipped"); 
+		return; 
+	}
 	auto mat = new RelMat(n);
 	try {
 		int i,j;
@@ -469,17 +473,18 @@ void cluster(T, alias f)(T[] items)
 	sort(items);
 	int st = 0, en = 0;
 	string smallest = items[st].name;
+	float num = cast(float) items.length;
 	foreach(i; 1 .. items.length) {
 		auto ml = min(smallest.length, items[i].name.length);
 		if ((ml >=3 && smallest[0..ml] == items[i].name[0..ml]) || (smallest==items[i].name)) {
 			en = i;
 			smallest = smallest[0..ml];
 		} else {
-			if (en > st) f(items[st..en+1]);
+			if (en > st) f(items[st..en+1], i / num);
 			st = i; en = i; smallest = items[i].name;
 		}		
 	}
-	if (en > st) f(items[st..en+1]);
+	if (en > st) f(items[st..en+1], 1.0);
 }
 
 void on_inf_err(PFileInfo[] fs, InferenceError e) 
@@ -512,12 +517,12 @@ void searchDups(string fname)
 		}
 	}
 
-	cluster!(PFileInfo, fs => analyseCluster!(PFileInfo, (a,b) => relate(a,b,rc), on_inf_err)(fs, freslist))(bigfiles);
+	cluster!(PFileInfo, (fs,prg) => analyseCluster!(PFileInfo, (a,b) => relate(a,b,rc), on_inf_err, true)(fs, freslist))(bigfiles);
 	foreach(r; freslist) 
 		r.calcProfit();
 	showResults!(PFileInfo)(freslist);
 
-	cluster!(DirInfo, ds => analyseCluster!(DirInfo, (a,b) => compDirsCaching(a, b, rc), on_inf_error)(ds, reslist))(dirs);
+	cluster!(DirInfo, (ds,prg) => analyseCluster!(DirInfo, (a,b) => compDirsCaching(a, b, rc), on_inf_error, true)(ds, reslist))(dirs);
 
 	bool[int] reported;
 	foreach(r; reslist) reported[r.dir.ID] = true;

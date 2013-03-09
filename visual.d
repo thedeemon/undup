@@ -1,6 +1,6 @@
 module visual;
 import dfl.all, fileops, std.range, std.algorithm, std.stdio, std.math, std.c.windows.windows, dfl.internal.winapi,
-	std.string, rel;
+	std.string, rel, std.concurrency;
 immutable small_size = 4_000_000;
 
 string sizeString(long sz)
@@ -271,6 +271,7 @@ class Coloring : IAsker {
 		simboxes = sbx;
 		fsimboxes = fsbx;
 	}
+	this() {}
 
 	void ImInt(int id) { if (id in simboxes) sb = simboxes[id]; }
 	void ImString(string name) 
@@ -283,11 +284,11 @@ class Coloring : IAsker {
 class Visual : dfl.form.Form
 {
 	Box[] top;
+	DirInfo[] dirs;
 	MyPictureBox picBox;
 	dfl.label.Label lblFile, lblStatus;
 	dfl.button.Button btnSearch, btnCancel;
 	dfl.progressbar.ProgressBar progressBar;
-
 
 	Rect[] volumeRects;
 	Rect[] pathRects;
@@ -296,11 +297,13 @@ class Visual : dfl.form.Form
 	int W,H;
 	SimilarBoxes curSimBoxes;
 	Box lastHoveredBox;
+	Tid search_tid;
+	Timer timer; // for receiving messages
 
-	this(Box[] _top, SimilarBoxes[int] sbx, SimilarBoxes[string] fsbx) {
+	this(Box[] _top, DirInfo[] _dirs) {
 		W = 1000; H = 670;
-		top = _top;
-		coloring = new Coloring(sbx, fsbx);
+		top = _top; dirs = _dirs;
+		coloring = new Coloring();
 
 		initializeVisual();
 	}
@@ -339,14 +342,27 @@ class Visual : dfl.form.Form
 		btnCancel.text = "Cancel";
 		btnCancel.bounds = dfl.all.Rect(704, 0, 56, 24);
 		btnCancel.parent = this;
+		btnCancel.visible = false;
 		//~DFL dfl.progressbar.ProgressBar=progressBar
 		progressBar = new dfl.progressbar.ProgressBar();
 		progressBar.name = "progressBar";
 		progressBar.bounds = dfl.all.Rect(472, 0, 224, 24);
 		progressBar.parent = this;
+		progressBar.minimum = 0;
+		progressBar.maximum = 1000;
+		progressBar.value = 0;
 
 		picBox.mouseMove ~= &OnMouseMove;
 		picBox.paint ~= &OnPicPaint;
+
+		btnSearch.click ~= &StartSearch;
+		btnCancel.click ~= &CancelSearch;
+
+		timer = new Timer;
+		timer.interval = 100;
+		timer.tick ~= &OnTimer;
+		timer.start();
+
 
 		displayBoxes();
 	}
@@ -442,6 +458,34 @@ class Visual : dfl.form.Form
 		}
 	}
 
+	void OnTimer(Timer sender, EventArgs ea)
+	{
+		import core.time;
+		while(receiveTimeout(dur!"msecs"(0), &RcvMsgAnalyzing)) {}
+	}
+
+	void StartSearch(Control, EventArgs)
+	{
+		btnSearch.visible = false;
+		btnCancel.visible = true;
+		//writeln("starting thread, my tid is ", thisTid);
+		//auto strt = (Tid t, shared(DirInfo[]) ds) { searchDups(ds, t); };
+		search_tid = spawn(&searchDups, cast(shared)dirs, thisTid);
+	}
+
+	void CancelSearch(Control, EventArgs)
+	{
+		btnSearch.visible = true;
+		btnCancel.visible = false;
+		//...
+	}
+
+	void RcvMsgAnalyzing(MsgAnalyzing m)
+	{
+		lblStatus.text = format("analyzing %s [%s]", m.name, m.sz);
+		progressBar.value = cast(int) (m.progress * 1000);
+	}
+
 }//class Visual
 
 auto ids(DirInfo[] arr) { return arr.map!(di => di.ID); }
@@ -460,10 +504,19 @@ void addOlder(R,I,S)(R old_ids, I myid, ref S[I] sim)
 	}
 }
 
-void vsearch(string fname)
+//messages
+struct MsgAnalyzing {
+	string name;
+	int sz;
+	float progress;
+}
+
+void searchDups(shared(DirInfo[]) _dirs, Tid gui_tid)
 {
-	writeln("reading ", fname);
-	DirInfo[] dirs = useIndex(readDump(fname));
+	DirInfo[] dirs = cast(DirInfo[]) _dirs;
+	writeln("searchDups ", dirs.length);
+
+	gui_tid.send(MsgAnalyzing("test", 123, 0.175));
 
 	auto rc = new RelCache();
 	ResultItem!DirInfo[] reslist = [];
@@ -480,8 +533,15 @@ void vsearch(string fname)
 	}
 
 	auto comp(DirInfo a, DirInfo b) { return compDirsCaching(a, b, rc); }
-
-	cluster!(DirInfo, ds => analyseCluster!(DirInfo, comp, on_inf_error2)(ds, reslist))(dirs);
+	void ancd(DirInfo[] ds, float prg) 
+	{
+		writeln("12");
+		gui_tid.send(MsgAnalyzing(ds[0].name, ds.length, prg * 0.75));
+		analyseCluster!(DirInfo, comp, on_inf_error2, true)(ds, reslist);
+	}
+	writeln("10");
+	cluster!(DirInfo, ancd)(dirs);
+	writeln("20");
 
 	bool[int] reported;
 	foreach(r; reslist) reported[r.dir.ID] = true;
@@ -495,15 +555,16 @@ void vsearch(string fname)
 	void on_inf_err3(PFileInfo[] fs, InferenceError e) {}
 
 	auto compf(PFileInfo a, PFileInfo b) { return relate(a,b,rc); }
-	auto anc(PFileInfo[] fs) { return analyseCluster!(PFileInfo, compf, on_inf_err3)(fs, freslist); }
-	cluster!(PFileInfo, anc)(bigfiles);
+	void ancf(PFileInfo[] fs, float prg) 
+	{ 
+		send(gui_tid, MsgAnalyzing(fs[0].name, fs.length, 0.75 + prg * 0.25));
+		analyseCluster!(PFileInfo, compf, on_inf_err3, false)(fs, freslist); 
+	}
+	writeln("30");
+	cluster!(PFileInfo, ancf)(bigfiles);
+	writeln("40");
 
-	writeln("getting top");
-	DirInfo[] topdirs = dirs.filter!(di => di.parent is null).array;
-	writeln("making box tree");
-	Box[] top = topdirs.map!(boxOfDir).array;
-
-	SimilarDirs[int] sim;
+	/*SimilarDirs[int] sim;
 	foreach(r; reslist) {
 		r.calcProfit();
 		SimilarDirs s;
@@ -517,18 +578,6 @@ void vsearch(string fname)
 		sim[r.dir.ID] = s;
 		addOlder(r.older.ids, r.dir.ID, sim);
 	}
-
-	Box[int] boxIndex;
-	Box[string] fboxIndex;
-	foreach(bx; top) {
-		bx.addDirsToMap(boxIndex);
-		bx.addFilesToMap(fboxIndex);
-	}
-
-	SimilarBoxes[int] simboxes;
-	foreach(id; sim.byKey)
-		simboxes[id] = simBoxesOfSets(sim[id], boxIndex);
-	//showResults!(DirInfo, di => sizes[di.ID])(reslist);
 
 	SimilarFiles[string] simf;
 	foreach(r; freslist) {
@@ -545,17 +594,40 @@ void vsearch(string fname)
 		addOlder(r.older.names, r.dir.fullName, simf);
 	}
 
+	Box[int] boxIndex;
+	Box[string] fboxIndex;
+	foreach(bx; top) {
+		bx.addDirsToMap(boxIndex);
+		bx.addFilesToMap(fboxIndex);
+	}
+
+	SimilarBoxes[int] simboxes;
+	foreach(id; sim.byKey)
+		simboxes[id] = simBoxesOfSets(sim[id], boxIndex);
+
 	SimilarBoxes[string] fsimboxes;
 	foreach(id; simf.byKey)
-		fsimboxes[id] = simBoxesOfSets(simf[id], fboxIndex);
+		fsimboxes[id] = simBoxesOfSets(simf[id], fboxIndex);*/
+}
 
+void vsearch(string fname)
+{
+	writeln("reading ", fname);
+	DirInfo[] dirs = useIndex(readDump(fname));
+
+	writeln("getting top");
+	DirInfo[] topdirs = dirs.filter!(di => di.parent is null).array;
+	writeln("making box tree");
+	Box[] top = topdirs.map!(boxOfDir).array;
 
 	try
 	{
+		//import core.runtime;
+		//Runtime.initialize(null);
 		Application.enableVisualStyles();
 		Application.autoCollect = false;
 		//@  Other application initialization code here.
-		Application.run(new Visual(top, simboxes, fsimboxes));
+		Application.run(new Visual(top, dirs));
 	}
 	catch(Throwable o)
 	{
