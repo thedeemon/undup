@@ -220,6 +220,10 @@ void makeDump(string fname, string volumeName)
 			Tuple!(int,string)[] subdirs;
 			FileInfo[] files;
 			foreach(DirEntry e; dirEntries(dir[0], SpanMode.shallow, false)) {
+				if (e.isSymlink) {
+					writeln("ignoring symlink ", e.name);
+					continue;
+				}
 				auto name = justName(e.name).toLower;
 				if (e.isDir) {
 					int id = addEntry(e.name, dirID);
@@ -429,8 +433,6 @@ class ResultItem(T) {
 		profit = sumsz(same) + sumsz(older);
 	}
 }
-
-//T[] notnull(T)(T[] a) { return a is null ? [] : a; }
 
 void analyseCluster(T, alias comp, alias on_error, bool talk)(T[] ds, ref ResultItem!T[] reslist)
 in 
