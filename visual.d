@@ -664,8 +664,6 @@ void vsearch(string fname)
 
 	try
 	{
-		//import core.runtime;
-		//Runtime.initialize(null);
 		Application.enableVisualStyles();
 		Application.autoCollect = false;
 		//@  Other application initialization code here.
