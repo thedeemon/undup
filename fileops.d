@@ -1,6 +1,6 @@
 module fileops;
-import std.stdio, std.file, std.string, std.container, std.datetime, core.stdc.time, std.outbuffer, std.typecons, 
-	std.traits, std.stream, std.range, std.algorithm, rel, std.math : abs;
+import rel, messages, std.stdio, std.file, std.string, std.container, std.datetime, core.stdc.time, std.outbuffer, std.typecons, 
+	std.traits, std.stream, std.range, std.algorithm, std.concurrency, std.math : abs;
 
 string justName(string pathname)
 {
@@ -210,35 +210,60 @@ class DirInfo : DirInfoBase, IFSObject {
 	void tell(IAsker asker) { asker.ImInt(ID); }
 }
 
-void makeDump(string fname, string volumeName)
+struct DumpSignature {
+	ushort marker; // 0xDDDD
+	ushort ver;    // 1
+}
+
+struct DumpHeader {
+	string path, name, volume;
+	int volumeSize; // in GB
+	long time;     // stdTime
+}
+
+shared bool cancelScan;
+
+void makeScan(string fname, DumpHeader hdr, Tid gui_tid)
 {
-	SList!(Tuple!(string, int, int)) dirstack;
+	alias Entry = Tuple!(string, "name", int, "id", int, "parentID", int, "depth");
+	DList!(Entry) dirstack;
 	OutBuffer all = new OutBuffer();
 	int nfiles, ndirs, nextID;
+	int totalbig = 0, visitedbig = 0;
 
-	int addEntry(string dirname, int parentID)
+	int addEntry(string dirname, int parentID, int depth)
 	{
 		int id = nextID++;
-		dirstack.insert(tuple(dirname, id, parentID));
+		Entry e = tuple(dirname, id, parentID, depth);
+		if (depth <= 2)
+			dirstack.insertBack(e);
+		else
+			dirstack.insertFront(e);
+		if (depth==2) totalbig++;
 		return id;
 	}
 
-	addEntry(".", -1);
+	save(DumpSignature(0xDDDD, 1), all);
+	save(hdr, all);
+
+	addEntry(hdr.path, -1, 0);
 	while(!dirstack.empty) {
-		auto dir = dirstack.removeAny();
-		int dirID = dir[1];
-		if (dir[2] < 1)	writeln(dir[0]);
+		if (cancelScan) return;
+		auto dir = dirstack.front;	dirstack.removeFront();
+		if (dir.depth==2) {
+			if (visitedbig==0) 	
+				gui_tid.send(MsgNumOfDirs(totalbig));				
+			visitedbig++;
+			gui_tid.send(MsgScanning(dir.name, visitedbig));
+		}
 		try {			
 			Tuple!(int,string)[] subdirs;
 			FileInfo[] files;
-			foreach(DirEntry e; dirEntries(dir[0], SpanMode.shallow, false)) {
-				if (e.isSymlink) {
-					writeln("ignoring symlink ", e.name);
-					continue;
-				}
+			foreach(DirEntry e; dirEntries(dir.name, SpanMode.shallow, false)) {
+				if (e.isSymlink) continue;				
 				auto name = justName(e.name).toLower;
 				if (e.isDir) {
-					int id = addEntry(e.name, dirID);
+					int id = addEntry(e.name, dir.id, dir.depth + 1);
 					subdirs ~= tuple(id, e.name);
 					ndirs++; 
 				} else {
@@ -249,30 +274,47 @@ void makeDump(string fname, string volumeName)
 
 			sort(files);
 			sort!((a,b)=> a[1] < b[1])(subdirs);
-			auto dname = dir[0] == "." ? volumeName : justName(dir[0]);
-			auto di = new DirInfo0(dirID, dir[2], dname, subdirs.map!(p => p[0]).array, files);
+			auto dname = dir[0] == hdr.path ? hdr.name : justName(dir[0]);
+			auto di = new DirInfo0(dir.id, dir.parentID, dname, subdirs.map!(p => p[0]).array, files);
 			save(di, all);
-		} catch(FileException ex) {
-			writeln(ex);
-		}
+		} catch(FileException ex) {		}
 	}//for each dir
 	std.file.write(fname, all.toBytes());
-	writefln("%s files, %s dirs ", nfiles, ndirs);	
+	gui_tid.send(MsgDone(nfiles, ndirs));
 }
 
-void showDump(string fname)
+bool readHeader(string fname, ref DumpHeader hdr)
+{
+	try {
+		auto bytes = cast(ubyte[]) std.file.read(fname, 10000);
+		auto ms = new MemoryStream(bytes);
+		DumpSignature sgn;
+		load(sgn, ms);
+		if (sgn.marker != 0xDDDD || sgn.ver != 1) return false;
+		load(hdr, ms);
+		return true;
+	} catch(Throwable ex) { return false; } 
+}
+
+/*void showDump(string fname)
 {
 	DirInfo0[] dirs = readDump(fname);
 	DirInfo0[] index = makeIndex(dirs);
 	foreach(di; dirs)
 		writeln(di.show(index));
-}
+}*/
 
 DirInfo0[] readDump(string fname)
 {
 	DirInfo0[] a = [];
 	auto bytes = cast(ubyte[]) std.file.read(fname);
 	auto ms = new MemoryStream(bytes);
+	DumpSignature sgn;
+	load(sgn, ms);
+	if (sgn.marker != 0xDDDD || sgn.ver != 1) return null;
+	DumpHeader hdr;
+	load(hdr, ms);
+
 	while(ms.position < ms.size) {
 		DirInfo0 di = new DirInfo0;
 		load(di, ms);
@@ -293,7 +335,7 @@ void liftIDs(ref DirInfo0 di, int delta)
 	foreach(ref x; di.subdirs) x += delta;
 }
 
-void joinDumps(string outname, string[] fnames)
+DirInfo0[] joinDumps(string[] fnames)
 {
 	auto dirs = readDump(fnames[0]);
 	int maxID = getMaxID(dirs) + 1;
@@ -303,10 +345,7 @@ void joinDumps(string outname, string[] fnames)
 		maxID = getMaxID(ds) + 1;
 		dirs ~= ds;
 	}
-
-	auto buf = new OutBuffer;
-	foreach(di; dirs) save(di, buf);
-	std.file.write(outname, buf.toBytes());
+	return dirs;
 }
 
 D[] makeIndex(D)(D[] ds)

@@ -1,5 +1,6 @@
 module scans;
-import dfl.all, newscan;
+import dfl.all, newscan, fileops, visual, std.file, std.stdio, std.conv, std.datetime, std.algorithm, 
+	std.range, std.array, std.string;
 
 class Scans: dfl.form.Form
 {
@@ -31,7 +32,7 @@ class Scans: dfl.form.Form
 		lvScans = new dfl.listview.ListView();
 		lvScans.name = "lvScans";
 		lvScans.allowColumnReorder = true;
-		lvScans.checkBoxes = true;
+		lvScans.checkBoxes = false;
 		lvScans.fullRowSelect = true;
 		lvScans.hideSelection = false;
 		lvScans.labelWrap = false;
@@ -70,13 +71,76 @@ class Scans: dfl.form.Form
 		label1.parent = this;
 		//~Entice Designer 0.8.5.02 code ends here.
 
+		auto colnames = ["Name", "Path", "Label", "Size", "Time"];
+		auto colwidths = [200, 200, 120, 50, 180];
+		foreach(i; 0..colnames.length) {
+			auto col = new ColumnHeader(colnames[i]);
+			col.width = colwidths[i];
+			lvScans.columns.add(col);
+		}
+
 		btnNew.click ~= &OnNewScan;
+		btnShow.click ~= &OnShowScans;
+		btnRemove.click ~= &OnRemove;
+
+		FillTable();
 	}
 
 	void OnNewScan(Control, EventArgs)
 	{
 		auto frm = new NewScan();
-		frm.showDialog();
+		frm.showDialog(this);
+		lvScans.clear();
+		FillTable();
+	}
+
+	void FillTable()
+	{
+		auto mydir = GetMyDir();
+		foreach(string fname; dirEntries(mydir, "*.dmp", SpanMode.shallow)) {
+			DumpHeader hdr;
+			if (readHeader(fname, hdr)) {
+				auto item = lvScans.addRow([hdr.name, hdr.path, hdr.volume, hdr.volumeSize.to!string ~ " GB", SysTime(hdr.time).toSimpleString()]);
+				item.tag = new Str(fname);
+			}
+		}
+	}
+
+	void OnShowScans(Control, EventArgs)
+	{
+		auto sel = lvScans.selectedItems;
+		if (sel.length < 1) return;
+		auto fnames = iota(0, sel.length).map!(i => (cast(Str) sel[i].tag).s).array;
+		Show(fnames);
+	}
+
+	void OnRemove(Control, EventArgs)
+	{
+		auto sel = lvScans.selectedItems;
+		if (sel.length < 1) return;
+		auto sure = msgBox(format("Delete %s selected scans?", sel.length), "Remove scans?", MsgBoxButtons.YES_NO, MsgBoxIcon.QUESTION);		
+		if (sure==DialogResult.YES) {
+			foreach(i; 0..sel.length)
+				remove((cast(Str) sel[i].tag).s);
+			lvScans.clear();
+			FillTable();
+		}
+	}
+
+	void Show(string[] fnames)
+	in 
+	{ assert(fnames.length > 0); }
+	body 
+	{
+		writeln("reading ");
+		DirInfo[] dirs = useIndex(joinDumps(fnames));
+		auto frm = new Visual(dirs);
+		frm.showDialog(this);
+	}
+
+	class Str {
+		string s;
+		this(string str) { s = str; }
 	}
 }
 

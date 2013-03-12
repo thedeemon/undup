@@ -3,17 +3,6 @@ import dfl.all, fileops, messages, core.sys.windows.windows, std.utf, std.conv, 
  std.concurrency, std.file, std.string, std.container, std.typecons, std.outbuffer, std.algorithm, 
  std.range, std.array;
 
-struct DumpSignature {
-	ushort marker; // 0xDDDD
-	ushort ver;    // 1
-}
-
-struct DumpHeader {
-	string path, name, volume;
-	int volumeSize; // in GB
-	long time;     // stdTime
-}
-
 class NewScan: dfl.form.Form
 {
 	// Do not modify or move this block of variables.
@@ -38,13 +27,12 @@ class NewScan: dfl.form.Form
 	long timeStamp, volumeSize;
 	Tid worker;
 	Timer timer; // for receiving messages
+	bool running;
 	
 	this()
 	{
+		running = false;
 		initializeNewScan();
-		
-		//@  Other NewScan initialization code here.
-		
 	}
 	
 	
@@ -158,7 +146,7 @@ class NewScan: dfl.form.Form
 		timeStamp = t.stdTime;
 		btnStart.click ~= &OnStart;
 		btnCancel.click ~= &OnCancel;
-		btnCancel.visible = false;
+		btnStart.visible = false;
 		progressBar.minimum = 0;
 		progressBar.maximum = 100;
 
@@ -185,24 +173,32 @@ class NewScan: dfl.form.Form
 		else
 			tbxName.text = label ~ "_" ~ szs;
 		tbxVolumeSize.text = szs;
+		btnStart.visible = true;
 	}
 
 	void OnStart(Control, EventArgs)
 	{
 		auto hdr = DumpHeader(tbxPath.text, tbxName.text, tbxVolume.text, cast(int)volumeSize, timeStamp);
-		auto mydir = GetAppPath() ~ "\\Undup";
+		auto mydir = GetMyDir();
 		if (!exists(mydir))
 			mkdir(mydir);
 		auto fname = format("%s\\%s.dmp", mydir, timeStamp);
 		EnableStart(false);
-		cancelScan = false;		
+		cancelScan = false;
+		running = true;
 		worker = spawn(&makeScan, fname, hdr, thisTid);
 	}
 
 	void OnCancel(Control, EventArgs)
 	{
-		cancelScan = true;
-		EnableStart(true);
+		if (running) {
+			cancelScan = true;
+			EnableStart(true);
+			lblStatus.text = "cancelled";
+			running = false;
+		} else {			
+			close();
+		}
 	}
 
 	void EnableStart(bool enable)
@@ -236,81 +232,12 @@ class NewScan: dfl.form.Form
 
 	void RcvMsgDone(MsgDone m)
 	{
-		lblStatus.text = "done!";
-		//EnableStart(true);
+		lblStatus.text = format("Done! %s files, %s dirs.", m.files, m.dirs);
+		running = false;
+		btnCancel.text = "Close";
 	}
 
 } // class NewScan
-
-shared bool cancelScan;
-
-void makeScan(string fname, DumpHeader hdr, Tid gui_tid)
-{
-	alias Entry = Tuple!(string, "name", int, "id", int, "parentID", int, "depth");
-	DList!(Entry) dirstack;
-	OutBuffer all = new OutBuffer();
-	int nfiles, ndirs, nextID;
-	int totalbig = 0, visitedbig = 0;
-
-	int addEntry(string dirname, int parentID, int depth)
-	{
-		int id = nextID++;
-		Entry e = tuple(dirname, id, parentID, depth);
-		if (depth <= 2)
-			dirstack.insertBack(e);
-		else
-			dirstack.insertFront(e);
-		if (depth==2) totalbig++;
-		return id;
-	}
-
-	save(DumpSignature(0xDDDD, 1), all);
-	save(hdr, all);
-
-	addEntry(hdr.path, -1, 0);
-	while(!dirstack.empty) {
-		if (cancelScan) return;
-		auto dir = dirstack.front;	dirstack.removeFront();
-		int dirID = dir.id;
-		//if (dir.parentID < 1)	writeln(dir.name);
-		if (dir.depth==2) {
-			if (visitedbig==0) {
-				writeln("total=", totalbig);
-				gui_tid.send(MsgNumOfDirs(totalbig));				
-			}
-			visitedbig++;
-			gui_tid.send(MsgScanning(dir.name, visitedbig));
-		}
-		try {			
-			Tuple!(int,string)[] subdirs;
-			FileInfo[] files;
-			foreach(DirEntry e; dirEntries(dir.name, SpanMode.shallow, false)) {
-				if (e.isSymlink) continue;				
-				auto name = justName(e.name).toLower;
-				if (e.isDir) {
-					int id = addEntry(e.name, dirID, dir.depth + 1);
-					subdirs ~= tuple(id, e.name);
-					ndirs++; 
-				} else {
-					nfiles++;					
-					files ~= new FileInfo(name, e.size, e.timeLastModified.stdTime);
-				}				
-			}//foreach file in dir
-
-			sort(files);
-			sort!((a,b)=> a[1] < b[1])(subdirs);
-			auto dname = dir[0] == "." ? hdr.name : justName(dir[0]);
-			auto di = new DirInfo0(dirID, dir.parentID, dname, subdirs.map!(p => p[0]).array, files);
-			save(di, all);
-		} catch(FileException ex) {
-			//writeln(ex);
-		}
-	}//for each dir
-	std.file.write(fname, all.toBytes());
-	gui_tid.send(MsgDone());
-	writefln("%s files, %s dirs ", nfiles, ndirs);	
-}
-
 
 extern(Windows) {
 	BOOL GetVolumePathNameW(LPCWSTR, LPWSTR, DWORD);	
@@ -319,7 +246,12 @@ extern(Windows) {
 	BOOL GetDiskFreeSpaceW(LPCWSTR, PDWORD, PDWORD, PDWORD, PDWORD);
 	BOOL SHGetSpecialFolderPathW(HWND,LPWSTR,int,BOOL);
 }
-	
+
+string GetMyDir()
+{
+	return GetAppPath() ~ "\\Undup";
+}
+
 string GetAppPath()
 {
 	enum CSIDL_APPDATA = 26;

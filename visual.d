@@ -67,11 +67,13 @@ class Visual : dfl.form.Form
 	Tid search_tid;
 	Timer timer; // for receiving messages
 
-	this(Box[] _top, DirInfo[] _dirs) {
+	this(DirInfo[] _dirs) {
 		W = 1000; H = 670;
-		top = _top; dirs = _dirs;
+		dirs = _dirs;
+		writeln("making box tree");
+		//DirInfo[] topdirs = dirs.filter!(di => di.parent is null).array;
+		top = dirs.filter!(di => di.parent is null).map!(boxOfDir).array;
 		coloring = new Coloring();
-
 		initializeVisual();
 	}
 
@@ -401,7 +403,7 @@ void searchDups(shared(DirInfo[]) _dirs, Tid gui_tid)
 	writeln("search thread finishes");
 }
 
-void vsearch(string fname)
+/*void vsearch(string fname)
 {
 	writeln("reading ", fname);
 	DirInfo[] dirs = useIndex(readDump(fname));
@@ -422,4 +424,4 @@ void vsearch(string fname)
 	{
 		msgBox(o.toString(), "Fatal Error", MsgBoxButtons.OK, MsgBoxIcon.ERROR);		
 	}
-}
+}*/

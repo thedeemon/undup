@@ -25,4 +25,6 @@ struct MsgScanning {
 	int i;
 }
 
-struct MsgDone {}
+struct MsgDone {
+	int files, dirs;
+}
