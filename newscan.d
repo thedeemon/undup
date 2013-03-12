@@ -1,5 +1,10 @@
-import dfl.all, core.sys.windows.windows, std.utf, std.conv, std.stdio;
+import dfl.all, core.sys.windows.windows, std.utf, std.conv, std.stdio, std.datetime, std.concurrency, fileops;
 
+struct DumpHeader {
+	string path, name, volume;
+	int volumeSize;
+	long time;
+}
 
 class NewScan: dfl.form.Form
 {
@@ -22,6 +27,7 @@ class NewScan: dfl.form.Form
 	dfl.button.Button btnCancel;
 	//~Entice Designer variables end here.
 	
+	long timeStamp, volumeSize;
 	
 	this()
 	{
@@ -83,6 +89,7 @@ class NewScan: dfl.form.Form
 		tbxVolume.readOnly = true;
 		tbxVolume.bounds = dfl.all.Rect(120, 80, 240, 24);
 		tbxVolume.parent = this;
+		tbxVolume.enabled = false;
 		//~DFL dfl.label.Label=label5
 		label5 = new dfl.label.Label();
 		label5.name = "label5";
@@ -96,6 +103,7 @@ class NewScan: dfl.form.Form
 		tbxVolumeSize.readOnly = true;
 		tbxVolumeSize.bounds = dfl.all.Rect(120, 112, 240, 24);
 		tbxVolumeSize.parent = this;
+		tbxVolumeSize.enabled = false;
 		//~DFL dfl.label.Label=label6
 		label6 = new dfl.label.Label();
 		label6.name = "label6";
@@ -109,6 +117,7 @@ class NewScan: dfl.form.Form
 		tbxTime.readOnly = true;
 		tbxTime.bounds = dfl.all.Rect(120, 144, 240, 24);
 		tbxTime.parent = this;
+		tbxTime.enabled = false;
 		//~DFL dfl.button.Button=btnStart
 		btnStart = new dfl.button.Button();
 		btnStart.name = "btnStart";
@@ -134,6 +143,10 @@ class NewScan: dfl.form.Form
 		//~Entice Designer 0.8.5.02 code ends here.
 
 		btnBrowse.click ~= &OnBrowse;
+		auto t = Clock.currTime();
+		tbxTime.text = t.toSimpleString();
+		timeStamp = t.stdTime;
+		btnStart.click ~= &OnStart;
 	}
 
 	void OnBrowse(Control, EventArgs)
@@ -146,14 +159,20 @@ class NewScan: dfl.form.Form
 		long size;
 		auto label = GetVolumeInfo(path, dt, size);	
 		tbxVolume.text = label;		
-		string szs = to!string(size / 1000_000_000) ~ "GB";
+		volumeSize = size / 1000_000_000;
+		string szs = volumeSize.to!string ~ "GB";
 		if (dt==3)  //fixed disk
 			tbxName.text = GetComputerName() ~ "_" ~ path[0] ~ "_" ~ szs;
 		else
 			tbxName.text = label ~ "_" ~ szs;
 		tbxVolumeSize.text = szs;
 	}
-}
+
+	void OnStart(Control, EventArgs)
+	{
+		auto hdr = DumpHeader(tbxPath.text, tbxName.text, tbxVolume.text, cast(int)volumeSize, timeStamp);
+	}
+} // class NewScan
 
 extern(Windows) {
 	BOOL GetVolumePathNameW(LPCWSTR, LPWSTR, DWORD);	
@@ -191,9 +210,7 @@ auto toUTF16z(S)(S s)
 S fromWStringz(S)(const wchar* s)
 {
     if (s is null) return null;
-
     wchar* ptr;
     for (ptr = cast(wchar*)s; *ptr; ++ptr) {}
-
     return to!S(s[0..ptr-s]);
 }
