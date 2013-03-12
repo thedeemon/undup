@@ -1,9 +1,17 @@
-import dfl.all, core.sys.windows.windows, std.utf, std.conv, std.stdio, std.datetime, std.concurrency, fileops;
+module newscan;
+import dfl.all, fileops, messages, core.sys.windows.windows, std.utf, std.conv, std.stdio, std.datetime, 
+ std.concurrency, std.file, std.string, std.container, std.typecons, std.outbuffer, std.algorithm, 
+ std.range, std.array;
+
+struct DumpSignature {
+	ushort marker; // 0xDDDD
+	ushort ver;    // 1
+}
 
 struct DumpHeader {
 	string path, name, volume;
-	int volumeSize;
-	long time;
+	int volumeSize; // in GB
+	long time;     // stdTime
 }
 
 class NewScan: dfl.form.Form
@@ -22,12 +30,14 @@ class NewScan: dfl.form.Form
 	dfl.label.Label label6;
 	dfl.textbox.TextBox tbxTime;
 	dfl.button.Button btnStart;
-	dfl.progressbar.ProgressBar progressBar1;
+	dfl.progressbar.ProgressBar progressBar;
 	dfl.label.Label lblStatus;
 	dfl.button.Button btnCancel;
 	//~Entice Designer variables end here.
 	
 	long timeStamp, volumeSize;
+	Tid worker;
+	Timer timer; // for receiving messages
 	
 	this()
 	{
@@ -125,10 +135,10 @@ class NewScan: dfl.form.Form
 		btnStart.bounds = dfl.all.Rect(368, 176, 72, 24);
 		btnStart.parent = this;
 		//~DFL dfl.progressbar.ProgressBar=progressBar1
-		progressBar1 = new dfl.progressbar.ProgressBar();
-		progressBar1.name = "progressBar1";
-		progressBar1.bounds = dfl.all.Rect(8, 176, 352, 24);
-		progressBar1.parent = this;
+		progressBar = new dfl.progressbar.ProgressBar();
+		progressBar.name = "progressBar1";
+		progressBar.bounds = dfl.all.Rect(8, 176, 352, 24);
+		progressBar.parent = this;
 		//~DFL dfl.label.Label=lblStatus
 		lblStatus = new dfl.label.Label();
 		lblStatus.name = "lblStatus";
@@ -147,6 +157,15 @@ class NewScan: dfl.form.Form
 		tbxTime.text = t.toSimpleString();
 		timeStamp = t.stdTime;
 		btnStart.click ~= &OnStart;
+		btnCancel.click ~= &OnCancel;
+		btnCancel.visible = false;
+		progressBar.minimum = 0;
+		progressBar.maximum = 100;
+
+		timer = new Timer;
+		timer.interval = 100;
+		timer.tick ~= &OnTimer;
+		timer.start();
 	}
 
 	void OnBrowse(Control, EventArgs)
@@ -171,16 +190,144 @@ class NewScan: dfl.form.Form
 	void OnStart(Control, EventArgs)
 	{
 		auto hdr = DumpHeader(tbxPath.text, tbxName.text, tbxVolume.text, cast(int)volumeSize, timeStamp);
+		auto mydir = GetAppPath() ~ "\\Undup";
+		if (!exists(mydir))
+			mkdir(mydir);
+		auto fname = format("%s\\%s.dmp", mydir, timeStamp);
+		EnableStart(false);
+		cancelScan = false;		
+		worker = spawn(&makeScan, fname, hdr, thisTid);
 	}
+
+	void OnCancel(Control, EventArgs)
+	{
+		cancelScan = true;
+		EnableStart(true);
+	}
+
+	void EnableStart(bool enable)
+	{
+		btnCancel.visible = !enable;
+		btnStart.enabled = enable;
+		tbxPath.enabled = enable;
+		tbxName.enabled = enable;
+		btnBrowse.enabled = enable;
+		progressBar.value = 0;
+	}
+
+	void OnTimer(Timer sender, EventArgs ea)
+	{
+		while(receiveTimeout(dur!"msecs"(0), &RcvMsgNumOfDirs, &RcvMsgScanning, &RcvMsgDone)) {}
+	}
+
+	void RcvMsgNumOfDirs(MsgNumOfDirs m)
+	{
+		progressBar.maximum = m.n;
+		progressBar.value = 0;
+		writeln("RcvMsgNumOfDirs ", m.n);
+	}
+
+	void RcvMsgScanning(MsgScanning m)
+	{
+		lblStatus.text = "Scanning " ~ m.name;
+		progressBar.value = m.i;
+		writeln("RcvMsgScanning ", m.name, " ", m.i);
+	}
+
+	void RcvMsgDone(MsgDone m)
+	{
+		lblStatus.text = "done!";
+		//EnableStart(true);
+	}
+
 } // class NewScan
+
+shared bool cancelScan;
+
+void makeScan(string fname, DumpHeader hdr, Tid gui_tid)
+{
+	alias Entry = Tuple!(string, "name", int, "id", int, "parentID", int, "depth");
+	DList!(Entry) dirstack;
+	OutBuffer all = new OutBuffer();
+	int nfiles, ndirs, nextID;
+	int totalbig = 0, visitedbig = 0;
+
+	int addEntry(string dirname, int parentID, int depth)
+	{
+		int id = nextID++;
+		Entry e = tuple(dirname, id, parentID, depth);
+		if (depth <= 2)
+			dirstack.insertBack(e);
+		else
+			dirstack.insertFront(e);
+		if (depth==2) totalbig++;
+		return id;
+	}
+
+	save(DumpSignature(0xDDDD, 1), all);
+	save(hdr, all);
+
+	addEntry(hdr.path, -1, 0);
+	while(!dirstack.empty) {
+		if (cancelScan) return;
+		auto dir = dirstack.front;	dirstack.removeFront();
+		int dirID = dir.id;
+		//if (dir.parentID < 1)	writeln(dir.name);
+		if (dir.depth==2) {
+			if (visitedbig==0) {
+				writeln("total=", totalbig);
+				gui_tid.send(MsgNumOfDirs(totalbig));				
+			}
+			visitedbig++;
+			gui_tid.send(MsgScanning(dir.name, visitedbig));
+		}
+		try {			
+			Tuple!(int,string)[] subdirs;
+			FileInfo[] files;
+			foreach(DirEntry e; dirEntries(dir.name, SpanMode.shallow, false)) {
+				if (e.isSymlink) continue;				
+				auto name = justName(e.name).toLower;
+				if (e.isDir) {
+					int id = addEntry(e.name, dirID, dir.depth + 1);
+					subdirs ~= tuple(id, e.name);
+					ndirs++; 
+				} else {
+					nfiles++;					
+					files ~= new FileInfo(name, e.size, e.timeLastModified.stdTime);
+				}				
+			}//foreach file in dir
+
+			sort(files);
+			sort!((a,b)=> a[1] < b[1])(subdirs);
+			auto dname = dir[0] == "." ? hdr.name : justName(dir[0]);
+			auto di = new DirInfo0(dirID, dir.parentID, dname, subdirs.map!(p => p[0]).array, files);
+			save(di, all);
+		} catch(FileException ex) {
+			//writeln(ex);
+		}
+	}//for each dir
+	std.file.write(fname, all.toBytes());
+	gui_tid.send(MsgDone());
+	writefln("%s files, %s dirs ", nfiles, ndirs);	
+}
+
 
 extern(Windows) {
 	BOOL GetVolumePathNameW(LPCWSTR, LPWSTR, DWORD);	
 	BOOL GetVolumeInformationW(LPCWSTR, LPWSTR, DWORD, PDWORD, PDWORD, PDWORD, LPWSTR, DWORD);
 	UINT GetDriveTypeW(LPCWSTR);
 	BOOL GetDiskFreeSpaceW(LPCWSTR, PDWORD, PDWORD, PDWORD, PDWORD);
+	BOOL SHGetSpecialFolderPathW(HWND,LPWSTR,int,BOOL);
 }
 	
+string GetAppPath()
+{
+	enum CSIDL_APPDATA = 26;
+	auto buf = new wchar[512];
+	if (SHGetSpecialFolderPathW(null, buf.ptr, CSIDL_APPDATA, 0) == 0) return "";
+	return fromWStringz!(string)(buf.ptr);
+}
+
 string GetVolumeInfo(string path, out uint driveType, out long size)
 {
 	auto root = new wchar[1024];

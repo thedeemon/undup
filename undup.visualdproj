@@ -187,8 +187,10 @@
   <filesToClean>*.obj;*.cmd;*.build;*.json;*.dep</filesToClean>
  </Config>
  <Folder name="undup">
+  <File path="box.d" />
   <File path="fileops.d" />
   <File path="main.d" />
+  <File path="messages.d" />
   <File path="newscan.d" />
   <File path="rel.d" />
   <File path="scans.d" />

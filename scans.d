@@ -1,3 +1,4 @@
+module scans;
 import dfl.all, newscan;
 
 class Scans: dfl.form.Form

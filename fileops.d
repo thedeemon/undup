@@ -71,6 +71,18 @@ interface IFSObject {
 	void tell(IAsker asker);
 }
 
+class Dummy : IFSObject {
+	long sz;
+	DirInfo parent;
+
+	string fullName()  { return parent is null ? "..." : parent.fullName() ~ "/..."; }	
+	long getSize() { return sz; }
+	int getID() { return -1; }
+
+	this(long _size, DirInfo _parent) { sz = _size; parent = _parent; }
+	void tell(IAsker asker) {}
+}
+
 class FileInfo {
 	string name;
 	ulong size;
