@@ -485,7 +485,7 @@ class ResultItem(T) {
 	}
 }
 
-void analyseCluster(T, alias comp, alias on_error, bool talk)(T[] ds, ref ResultItem!T[] reslist)
+void analyseCluster(T, bool talk)(T[] ds, Rel delegate(T,T) comp, ref ResultItem!T[] reslist)
 in 
 {
 	assert(ds.length > 1);
@@ -500,16 +500,10 @@ body
 		return; 
 	}
 	auto mat = new RelMat(n);
-	try {
-		int i,j;
-		while(mat.nextPair(i, j)) {
-			auto r = comp(ds[i], ds[j]);
-			mat.add(i,j, r);
-		}
-	} catch(InferenceError e) {
-		on_error(ds, e);
-		stdout.flush();
-		assert(0, "Inference error");
+	int i,j;
+	while(mat.nextPair(i, j)) {
+		auto r = comp(ds[i], ds[j]);
+		mat.add(i,j, r);
 	}
 	foreach(z; 0..n) {
 		auto row = mat.rel[z];		
@@ -521,7 +515,7 @@ body
 	}
 }
 
-void cluster(T, alias f)(T[] items)
+void cluster(T)(T[] items, void delegate(T[], float) f)
 in 
 { assert(items.length > 0); }
 body
@@ -549,7 +543,7 @@ void on_inf_err(PFileInfo[] fs, InferenceError e)
 		writeln(fs[k].fullName());
 }
 
-void searchDups(string fname)
+/*void searchDups(string fname)
 {
 	DirInfo[] dirs = useIndex(readDump(fname));
 
@@ -588,7 +582,7 @@ void searchDups(string fname)
 		r.calcProfit();
 
 	showResults!(DirInfo)(reslist);
-}
+}*/
 
 void showResults(T)(ResultItem!T[] reslist)
 {

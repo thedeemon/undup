@@ -355,18 +355,7 @@ void searchDups(shared(DirInfo[]) _dirs, Tid gui_tid)
 	auto rc = new RelCache();
 	ResultItem!DirInfo[] reslist = [];
 
-	void on_inf_error2(DirInfo[] ds, InferenceError e)
-	{
-		foreach(k; e.abc)
-			writeln(ds[k].fullName());
-		foreach(ii; e.abc) {
-			foreach(jj; e.abc)
-				writef("%s ", rc.get(ds[ii].ID,ds[jj].ID));
-			writeln();
-		}
-	}
-
-	auto comp(DirInfo a, DirInfo b) { return compDirsCaching(a, b, rc); }
+	Rel comp(DirInfo a, DirInfo b) { return compDirsCaching(a, b, rc); }
 	void ancd(DirInfo[] ds, float prg) 
 	{
 		//writeln("11");
@@ -375,12 +364,12 @@ void searchDups(shared(DirInfo[]) _dirs, Tid gui_tid)
 		//writeln("12");
 		gui_tid.send(MsgAnalyzing(ds[0].name, ds.length, prg * 0.75));
 		//writeln("13");
-		analyseCluster!(DirInfo, comp, on_inf_error2, false)(ds, reslist);
+		analyseCluster!(DirInfo, false)(ds, &comp, reslist);
 	}
 	writeln("10");
 	try {
 		if (dirs.length > 0)
-			cluster!(DirInfo, ancd)(dirs);
+			cluster!(DirInfo)(dirs, &ancd);
 		writeln("20");
 
 		bool[int] reported;
@@ -395,9 +384,7 @@ void searchDups(shared(DirInfo[]) _dirs, Tid gui_tid)
 		writeln("26");
 		ResultItem!PFileInfo[] freslist = [];
 
-		void on_inf_err3(PFileInfo[] fs, InferenceError e) {}
-
-		auto compf(PFileInfo a, PFileInfo b) { return relate(a,b,rc); }
+		Rel compf(PFileInfo a, PFileInfo b) { return relate(a,b,rc); }
 		void ancf(PFileInfo[] fs, float prg) 
 		{ 
 			//writeln("31");
@@ -406,11 +393,11 @@ void searchDups(shared(DirInfo[]) _dirs, Tid gui_tid)
 			//writeln("32");
 			send(gui_tid, MsgAnalyzing(fs[0].name, fs.length, 0.75 + prg * 0.25));
 			//writeln("33");
-			analyseCluster!(PFileInfo, compf, on_inf_err3, false)(fs, freslist); 
+			analyseCluster!(PFileInfo, false)(fs, &compf, freslist); 
 		}
 		writeln("30");
 		if (bigfiles.length > 0)
-			cluster!(PFileInfo, ancf)(bigfiles);
+			cluster!(PFileInfo)(bigfiles, &ancf);
 		writeln("40");
 
 		SimilarDirs[int] sim;
