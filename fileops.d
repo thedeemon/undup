@@ -522,6 +522,9 @@ body
 }
 
 void cluster(T, alias f)(T[] items)
+in 
+{ assert(items.length > 0); }
+body
 {
 	sort(items);
 	int st = 0, en = 0;

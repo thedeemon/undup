@@ -142,7 +142,7 @@ class NewScan: dfl.form.Form
 
 		btnBrowse.click ~= &OnBrowse;
 		auto t = Clock.currTime();
-		tbxTime.text = t.toSimpleString();
+		tbxTime.text = (cast(DateTime)t).toSimpleString();
 		timeStamp = t.stdTime;
 		btnStart.click ~= &OnStart;
 		btnCancel.click ~= &OnCancel;
@@ -213,7 +213,15 @@ class NewScan: dfl.form.Form
 
 	void OnTimer(Timer sender, EventArgs ea)
 	{
+		msgScanning.nullify();
 		while(receiveTimeout(dur!"msecs"(0), &RcvMsgNumOfDirs, &RcvMsgScanning, &RcvMsgDone)) {}
+		if (!msgScanning.isNull) {
+			auto str = "Scanning " ~ msgScanning.name;
+			lblStatus.text = str;
+			progressBar.value = msgScanning.i;
+			invalidate();
+			writeln("lblStatus.text = ", str);
+		}
 	}
 
 	void RcvMsgNumOfDirs(MsgNumOfDirs m)
@@ -225,17 +233,20 @@ class NewScan: dfl.form.Form
 
 	void RcvMsgScanning(MsgScanning m)
 	{
-		lblStatus.text = "Scanning " ~ m.name;
-		progressBar.value = m.i;
+		msgScanning = m;
 		writeln("RcvMsgScanning ", m.name, " ", m.i);
 	}
 
 	void RcvMsgDone(MsgDone m)
 	{
+		msgScanning.nullify();
 		lblStatus.text = format("Done! %s files, %s dirs.", m.files, m.dirs);
 		running = false;
 		btnCancel.text = "Close";
+		writeln("RcvMsgDone");
 	}
+
+	Nullable!MsgScanning msgScanning;
 
 } // class NewScan
 

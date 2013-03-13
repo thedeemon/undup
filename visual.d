@@ -1,6 +1,6 @@
 module visual;
 import dfl.all, fileops, messages, box, std.range, std.algorithm, std.stdio, std.math, std.c.windows.windows, 
-	dfl.internal.winapi, std.string, rel, std.concurrency, core.time : dur;
+	dfl.internal.winapi, std.string, rel, std.concurrency, std.typecons, core.time : dur;
 
 
 string sizeString(long sz)
@@ -229,33 +229,72 @@ class Visual : dfl.form.Form
 
 	void OnTimer(Timer sender, EventArgs ea)
 	{
-		while(receiveTimeout(dur!"msecs"(0), &RcvMsgAnalyzing, &RcvMsgSearchComplete)) {}
+		msgAnalyzing.nullify();
+
+		bool again = false, terminated = false;
+		do {
+			try {
+				again = receiveTimeout(dur!"msecs"(0), &RcvMsgAnalyzing, &RcvMsgSearchComplete, &RcvMsgCancel);
+			} catch(LinkTerminated lt) {
+				writeln("LinkTerminated");
+				terminated = true;
+			}
+		} while(again);
+
+		if (terminated) {			
+			btnSearch.visible = true;
+			btnCancel.visible = false;
+			progressBar.value = 0;
+			msgAnalyzing.nullify();
+			if (!cancelSearch && !complete)
+				lblStatus.text = "Error occured in analyzing thread.";
+		} else
+		if (!msgAnalyzing.isNull) {
+			lblStatus.text = format("analyzing %s [%s]", msgAnalyzing.name, msgAnalyzing.sz);
+			progressBar.value = cast(int) (msgAnalyzing.progress * 1000);
+		}
 	}
 
 	void StartSearch(Control, EventArgs)
 	{
 		btnSearch.visible = false;
 		btnCancel.visible = true;
-		search_tid = spawn(&searchDups, cast(shared)dirs, thisTid);
+		cancelSearch = false;
+		complete = false;
+		search_tid = spawnLinked(&searchDups, cast(shared)dirs, thisTid);
+		//searchDups(cast(shared)dirs, thisTid);
 	}
 
 	void CancelSearch(Control, EventArgs)
 	{
-		search_tid.send(MsgCancel());
+		//search_tid.send(MsgCancel());
+		cancelSearch = true;
+		lblStatus.text = "cancelling";
+	}
+
+	void RcvMsgCancel(MsgCancel m)
+	{
+		writeln("RcvMsgCancel");
 		btnSearch.visible = true;
 		btnCancel.visible = false;
 		progressBar.value = 0;
 		lblStatus.text = "search cancelled";
+		msgAnalyzing.nullify();
 	}
+
+	Nullable!MsgAnalyzing msgAnalyzing;
+	bool complete;
 
 	void RcvMsgAnalyzing(MsgAnalyzing m)
 	{
-		lblStatus.text = format("analyzing %s [%s]", m.name, m.sz);
-		progressBar.value = cast(int) (m.progress * 1000);
+		msgAnalyzing = m;
 	}
 
 	void RcvMsgSearchComplete(MsgSearchComplete m)
 	{
+		writeln("RcvMsgSearchComplete");
+		complete = true;
+		msgAnalyzing.nullify();
 		SimilarDirs[int] sim = cast(SimilarDirs[int]) m.sim;
 		SimilarFiles[string] simf = cast(SimilarFiles[string]) m.simf;
 
@@ -283,6 +322,7 @@ class Visual : dfl.form.Form
 		picBox.invalidate();
 		lblFile.bounds = dfl.all.Rect(0, H, 1000, 24);
 		clientSize = dfl.all.Size(1040, 706);
+		writeln("RcvMsgSearchComplete ok");
 	}
 
 }//class Visual
@@ -302,6 +342,8 @@ void addOlder(R,I,S)(R old_ids, I myid, ref S[I] sim)
 		}
 	}
 }
+
+shared bool cancelSearch;
 
 void searchDups(shared(DirInfo[]) _dirs, Tid gui_tid)
 {
@@ -328,7 +370,8 @@ void searchDups(shared(DirInfo[]) _dirs, Tid gui_tid)
 	void ancd(DirInfo[] ds, float prg) 
 	{
 		//writeln("11");
-		while(receiveTimeout(dur!"msecs"(0), (MsgCancel m) { throw new Cancelled(); })) {}
+		//while(receiveTimeout(dur!"msecs"(0), (MsgCancel m) { throw new Cancelled(); })) {}
+		if (cancelSearch) throw new Cancelled();
 		//writeln("12");
 		gui_tid.send(MsgAnalyzing(ds[0].name, ds.length, prg * 0.75));
 		//writeln("13");
@@ -336,16 +379,20 @@ void searchDups(shared(DirInfo[]) _dirs, Tid gui_tid)
 	}
 	writeln("10");
 	try {
-		cluster!(DirInfo, ancd)(dirs);
+		if (dirs.length > 0)
+			cluster!(DirInfo, ancd)(dirs);
 		writeln("20");
 
 		bool[int] reported;
 		foreach(r; reslist) reported[r.dir.ID] = true;
-		reslist = reslist.filter!(r => r.dir.parent.ID !in reported).array;
+		writeln("22");
+		reslist = reslist.filter!(r => r.dir.parent !is null ? (r.dir.parent.ID !in reported) : true).array;
 
+		writeln("24");
 		PFileInfo[] bigfiles = dirs.map!(
 										 di => di.files.filter!(fi => fi.size > 50_000_000L).map!(fi => new PFileInfo(fi, di))									 
 										 ).joiner.array;
+		writeln("26");
 		ResultItem!PFileInfo[] freslist = [];
 
 		void on_inf_err3(PFileInfo[] fs, InferenceError e) {}
@@ -354,14 +401,16 @@ void searchDups(shared(DirInfo[]) _dirs, Tid gui_tid)
 		void ancf(PFileInfo[] fs, float prg) 
 		{ 
 			//writeln("31");
-			while(receiveTimeout(dur!"msecs"(0), (MsgCancel m) { throw new Cancelled(); })) {}
+			//while(receiveTimeout(dur!"msecs"(0), (MsgCancel m) { throw new Cancelled(); })) {}
+			if (cancelSearch) throw new Cancelled();
 			//writeln("32");
 			send(gui_tid, MsgAnalyzing(fs[0].name, fs.length, 0.75 + prg * 0.25));
 			//writeln("33");
 			analyseCluster!(PFileInfo, compf, on_inf_err3, false)(fs, freslist); 
 		}
 		writeln("30");
-		cluster!(PFileInfo, ancf)(bigfiles);
+		if (bigfiles.length > 0)
+			cluster!(PFileInfo, ancf)(bigfiles);
 		writeln("40");
 
 		SimilarDirs[int] sim;
@@ -393,10 +442,11 @@ void searchDups(shared(DirInfo[]) _dirs, Tid gui_tid)
 			simf[r.dir.fullName] = s;
 			addOlder(r.older.names, r.dir.fullName, simf);
 		}
-
-		send(gui_tid, MsgSearchComplete(cast(shared)sim, cast(shared)simf));
+		writeln("complete, sending MsgSearchComplete");
+		gui_tid.send(MsgSearchComplete(cast(shared)sim, cast(shared)simf));
 	} catch(Cancelled c) {
 		writeln("cancelled");
+		gui_tid.send(MsgCancel());
 	} catch(MailboxFull mf) {
 		writeln("mbox full");
 	}

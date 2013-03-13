@@ -72,7 +72,7 @@ class Scans: dfl.form.Form
 		//~Entice Designer 0.8.5.02 code ends here.
 
 		auto colnames = ["Name", "Path", "Label", "Size", "Time"];
-		auto colwidths = [200, 200, 120, 50, 180];
+		auto colwidths = [210, 220, 120, 60, 140];
 		foreach(i; 0..colnames.length) {
 			auto col = new ColumnHeader(colnames[i]);
 			col.width = colwidths[i];
@@ -100,7 +100,8 @@ class Scans: dfl.form.Form
 		foreach(string fname; dirEntries(mydir, "*.dmp", SpanMode.shallow)) {
 			DumpHeader hdr;
 			if (readHeader(fname, hdr)) {
-				auto item = lvScans.addRow([hdr.name, hdr.path, hdr.volume, hdr.volumeSize.to!string ~ " GB", SysTime(hdr.time).toSimpleString()]);
+				auto tm = (cast(DateTime) SysTime(hdr.time)).toSimpleString();
+				auto item = lvScans.addRow([hdr.name, hdr.path, hdr.volume, hdr.volumeSize.to!string ~ " GB", tm]);
 				item.tag = new Str(fname);
 			}
 		}

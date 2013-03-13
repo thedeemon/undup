@@ -4,14 +4,14 @@ import std.stdio, scans, dfl.application, dfl.messagebox;
 void main(string[] argv)
 {
 	//if (argv.length < 3) {
-		try	{
+		//try	{
 			Application.enableVisualStyles();
 			Application.autoCollect = false;
 			Application.run(new Scans());
-		}
+		/*}
 		catch(Throwable o) {
 			msgBox(o.toString(), "Fatal Error", MsgBoxButtons.OK, MsgBoxIcon.ERROR);		
-		}
+		}*/
 	/*} else
 	if (argv[1]=="show") showDump(argv[2]);
 	else
