@@ -1,6 +1,6 @@
 module visual;
 import dfl.all, fileops, messages, box, std.range, std.algorithm, std.stdio, std.math, std.c.windows.windows, 
-	dfl.internal.winapi, std.string, rel, std.concurrency, std.typecons, core.time : dur;
+	dfl.internal.winapi, std.string, rel, std.concurrency, std.typecons, core.time;
 
 class MyPictureBox : PictureBox {
 	this() 
@@ -60,7 +60,7 @@ class Visual : dfl.form.Form
 	Font font;
 
 	this(DirInfo[] _dirs) {
-		W = 1000; H = 670;
+		W = 1040; H = 670;
 		dirs = _dirs;
 		writeln("making box tree");
 		//DirInfo[] topdirs = dirs.filter!(di => di.parent is null).array;
@@ -124,6 +124,7 @@ class Visual : dfl.form.Form
 		timer.tick ~= &OnTimer;
 		timer.start();
 		this.closing ~= &OnClosing;
+		this.minimumSize = Size(500, 200);
 
 		cancelSearch = false;
 
@@ -138,6 +139,31 @@ class Visual : dfl.form.Form
 	{
 		cancelSearch = true;
 		timer.stop();
+	}
+
+	struct SizeChange {
+		Size sz;
+		TickDuration t;
+	}
+
+	Nullable!SizeChange lastSizeChange;
+
+	override void onResize(EventArgs ea)
+	{
+		lastSizeChange = SizeChange(clientSize, TickDuration.currSystemTick);
+	}
+
+	void Resized()
+	{
+		writeln("resized ", lastSizeChange.sz);
+		lastSizeChange.nullify();
+		W = clientSize.width;
+		int prgh = progressBar.visible ? 24 : 0;
+		H = clientSize.height - (36 + prgh);
+		Layout(top, 0.0,0.0, W,H);
+		volumeRects = top.map!(bx => bx.rect).array;
+		displayBoxes();		
+		lblFile.bounds = dfl.all.Rect(0, H + prgh, W, 24);
 	}
 
 	void displayBoxes()
@@ -183,6 +209,7 @@ class Visual : dfl.form.Form
 		
 		//if (picBox.image !is null) delete picBox.image;
 		picBox.image = new Bitmap(hbm, true);
+		picBox.size = Size(w,h);
 	}
 
 	void OnMouseMove(Control c, MouseEventArgs ma)
@@ -255,7 +282,7 @@ class Visual : dfl.form.Form
 
 	void OnTimer(Timer sender, EventArgs ea)
 	{
-		writeln("onTimer this=", cast(void*)this);
+		//writeln("onTimer this=", cast(void*)this);
 		msgAnalyzing.nullify();
 
 		bool again = false, terminated = false;
@@ -269,7 +296,6 @@ class Visual : dfl.form.Form
 		} while(again);
 
 		if (terminated) {	
-			timer.stop();
 			btnSearch.visible = true;
 			btnCancel.visible = false;
 			progressBar.value = 0;
@@ -281,6 +307,12 @@ class Visual : dfl.form.Form
 			lblStatus.text = format("analyzing %s [%s]", msgAnalyzing.name, msgAnalyzing.sz);
 			progressBar.value = cast(int) (msgAnalyzing.progress * 1000);
 			writeln("got msgAnalyzing ", nmsgAn);
+		}
+
+		if (!lastSizeChange.isNull) {
+			auto dt = TickDuration.currSystemTick - lastSizeChange.t;
+			if (dt.msecs > 200)
+				Resized();
 		}
 	}
 
@@ -352,8 +384,8 @@ class Visual : dfl.form.Form
 		displayBoxes();
 		picBox.bounds = dfl.all.Rect(0, 0, W, H);
 		picBox.invalidate();
-		lblFile.bounds = dfl.all.Rect(0, H, 1000, 24);
-		clientSize = dfl.all.Size(1040, 706);
+		lblFile.bounds = dfl.all.Rect(0, H, W, 24);
+		clientSize = dfl.all.Size(W, H + 36);
 		writeln("RcvMsgSearchComplete ok");
 	}
 
