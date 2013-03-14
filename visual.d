@@ -131,10 +131,11 @@ class Visual : dfl.form.Form
 		timer.interval = 100;
 		timer.tick ~= &OnTimer;
 		timer.start();
+		this.closing ~= (Form f, CancelEventArgs c) => timer.stop();
 
 		Layout(top, 0.0,0.0, W,H);
 		volumeRects = top.map!(bx => bx.rect).array;
-		displayBoxes();
+		displayBoxes();		
 	}
 
 	void displayBoxes()
@@ -229,6 +230,7 @@ class Visual : dfl.form.Form
 
 	void OnTimer(Timer sender, EventArgs ea)
 	{
+		writeln("onTimer this=", cast(void*)this);
 		msgAnalyzing.nullify();
 
 		bool again = false, terminated = false;
@@ -241,7 +243,8 @@ class Visual : dfl.form.Form
 			}
 		} while(again);
 
-		if (terminated) {			
+		if (terminated) {	
+			timer.stop();
 			btnSearch.visible = true;
 			btnCancel.visible = false;
 			progressBar.value = 0;
@@ -252,6 +255,7 @@ class Visual : dfl.form.Form
 		if (!msgAnalyzing.isNull) {
 			lblStatus.text = format("analyzing %s [%s]", msgAnalyzing.name, msgAnalyzing.sz);
 			progressBar.value = cast(int) (msgAnalyzing.progress * 1000);
+			writeln("got msgAnalyzing ", nmsgAn);
 		}
 	}
 
@@ -261,6 +265,7 @@ class Visual : dfl.form.Form
 		btnCancel.visible = true;
 		cancelSearch = false;
 		complete = false;
+		nmsgAn = 0;
 		search_tid = spawnLinked(&searchDups, cast(shared)dirs, thisTid);
 		//searchDups(cast(shared)dirs, thisTid);
 	}
@@ -284,10 +289,12 @@ class Visual : dfl.form.Form
 
 	Nullable!MsgAnalyzing msgAnalyzing;
 	bool complete;
+	int nmsgAn;
 
 	void RcvMsgAnalyzing(MsgAnalyzing m)
 	{
 		msgAnalyzing = m;
+		nmsgAn++;
 	}
 
 	void RcvMsgSearchComplete(MsgSearchComplete m)

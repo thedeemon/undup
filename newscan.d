@@ -154,6 +154,8 @@ class NewScan: dfl.form.Form
 		timer.interval = 100;
 		timer.tick ~= &OnTimer;
 		timer.start();
+
+		this.closing ~= (Form f, CancelEventArgs c) => timer.stop();
 	}
 
 	void OnBrowse(Control, EventArgs)
@@ -215,7 +217,7 @@ class NewScan: dfl.form.Form
 	{
 		msgScanning.nullify();
 		while(receiveTimeout(dur!"msecs"(0), &RcvMsgNumOfDirs, &RcvMsgScanning, &RcvMsgDone)) {}
-		if (!msgScanning.isNull) {
+		if (!msgScanning.isNull && running) {
 			auto str = "Scanning " ~ msgScanning.name;
 			lblStatus.text = str;
 			progressBar.value = msgScanning.i;
@@ -242,8 +244,10 @@ class NewScan: dfl.form.Form
 		msgScanning.nullify();
 		lblStatus.text = format("Done! %s files, %s dirs.", m.files, m.dirs);
 		running = false;
+		progressBar.value = 0;
 		btnCancel.text = "Close";
 		writeln("RcvMsgDone");
+		timer.stop();
 	}
 
 	Nullable!MsgScanning msgScanning;
