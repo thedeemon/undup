@@ -1,8 +1,19 @@
 module box;
-import fileops, rel, std.algorithm, std.array, dfl.drawing : Rect;
+import fileops, rel, std.algorithm, std.array, std.string, dfl.drawing : Rect;
 
 immutable small_size = 4_000_000;
 alias DrawFun = void delegate(double x, double y, double w, double h, Rel, Box);
+
+string sizeString(long sz)
+{
+	enum long MB = 1024 * 1024; 
+	enum long GB = 1024 * MB;
+	if (sz >= 10*GB) return format("%s GB", sz / GB);
+	if (sz >= GB) return format("%s.%s GB", sz / GB, (sz / (GB/10)) % 10);
+	if (sz >= 10*MB) return format("%s MB", sz / MB);
+	if (sz >= MB) return format("%s.%s MB", sz / MB, (sz / (MB/10)) % 10);
+	return format("%s bytes", sz);
+}
 
 class Box {
 	IFSObject item;
@@ -18,7 +29,9 @@ class Box {
 			bx.parent = this;
 	}
 
-	@property size() { return item.getSize(); }
+	@property long size() { return item.getSize(); }
+
+	@property string sizeString() { return item.getSize.sizeString; }
 
 	void place(double x0, double y0, double width, double height)
 	{
@@ -75,18 +88,18 @@ class Box {
 		return Rect(cast(int)x, cast(int)y, cast(int)w, cast(int)h);
 	}
 
-	Rect[] pathRects()
+	Box[] path()
 	{
-		Rect[] rcs;
-		addAncestorsRects(rcs);
-		return rcs;
+		Box[] bxs;
+		addAncestors(bxs);
+		return bxs;
 	}
 
-	private void addAncestorsRects(ref Rect[] rcs)
+	private void addAncestors(ref Box[] bxs)
 	{
 		if (parent !is null)
-			parent.addAncestorsRects(rcs);
-		rcs ~= rect();
+			parent.addAncestors(bxs);
+		bxs ~= this;
 	}
 
 	void addDirsToMap(ref Box[int] index)

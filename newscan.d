@@ -155,7 +155,14 @@ class NewScan: dfl.form.Form
 		timer.tick ~= &OnTimer;
 		timer.start();
 
-		this.closing ~= (Form f, CancelEventArgs c) => timer.stop();
+		cancelScan = false;
+		this.closing ~= &OnClosing;
+	}
+
+	void OnClosing(Form f, CancelEventArgs c)
+	{
+		cancelScan = true;
+		timer.stop();
 	}
 
 	void OnBrowse(Control, EventArgs)
@@ -188,6 +195,7 @@ class NewScan: dfl.form.Form
 		EnableStart(false);
 		cancelScan = false;
 		running = true;
+		EmptyMsgQueue();
 		worker = spawn(&makeScan, fname, hdr, thisTid);
 	}
 
@@ -213,6 +221,15 @@ class NewScan: dfl.form.Form
 		progressBar.value = 0;
 	}
 
+	void EmptyMsgQueue()
+	{
+		while(receiveTimeout(dur!"msecs"(0), 
+				(MsgNumOfDirs m) {}, 
+				(MsgScanning m) {}, 
+				(MsgDone m) {} 
+		     )) {}
+	}
+
 	void OnTimer(Timer sender, EventArgs ea)
 	{
 		msgScanning.nullify();
@@ -221,7 +238,6 @@ class NewScan: dfl.form.Form
 			auto str = "Scanning " ~ msgScanning.name;
 			lblStatus.text = str;
 			progressBar.value = msgScanning.i;
-			invalidate();
 			writeln("lblStatus.text = ", str);
 		}
 	}

@@ -2,14 +2,6 @@ module visual;
 import dfl.all, fileops, messages, box, std.range, std.algorithm, std.stdio, std.math, std.c.windows.windows, 
 	dfl.internal.winapi, std.string, rel, std.concurrency, std.typecons, core.time : dur;
 
-
-string sizeString(long sz)
-{
-	enum long MB = 1024*1024; 
-	if (sz >= MB) return format("%s MB", sz / MB);
-	return format("%s bytes", sz);
-}
-
 class MyPictureBox : PictureBox {
 	this() 
 	{
@@ -58,14 +50,14 @@ class Visual : dfl.form.Form
 	dfl.progressbar.ProgressBar progressBar;
 
 	Rect[] volumeRects;
-	Rect[] pathRects;
+	Box[] pathToCurr;
 	Coloring coloring;
 	Box[] boxPixMap;
 	int W,H;
 	SimilarBoxes curSimBoxes;
 	Box lastHoveredBox;
-	Tid search_tid;
 	Timer timer; // for receiving messages
+	Font font;
 
 	this(DirInfo[] _dirs) {
 		W = 1000; H = 670;
@@ -131,11 +123,21 @@ class Visual : dfl.form.Form
 		timer.interval = 100;
 		timer.tick ~= &OnTimer;
 		timer.start();
-		this.closing ~= (Form f, CancelEventArgs c) => timer.stop();
+		this.closing ~= &OnClosing;
+
+		cancelSearch = false;
 
 		Layout(top, 0.0,0.0, W,H);
 		volumeRects = top.map!(bx => bx.rect).array;
 		displayBoxes();		
+
+		font = new Font("Arial", 10);
+	}
+
+	void OnClosing(Form f, CancelEventArgs c)
+	{
+		cancelSearch = true;
+		timer.stop();
 	}
 
 	void displayBoxes()
@@ -194,7 +196,7 @@ class Visual : dfl.form.Form
 				lblFile.text = format("%s (%s, parent: %s)", box.item.fullName(), box.item.getSize.sizeString,
 									  resParent is null ? "-" : resParent.item.getSize.sizeString);
 				
-				pathRects = box.pathRects();				
+				pathToCurr = box.path();				
 				curSimBoxes = box.similar;
 				picBox.invalidate();
 			}
@@ -221,11 +223,34 @@ class Visual : dfl.form.Form
 
 		int[8] colors = [0xFF, 0xFFFF, 0xFF00, 0xFF0000, 0xFF00FF, 0xFFFF00, 0xFFFFFF, 0x80FF];
 		int i = 0;
-		foreach(rc; pathRects) {
-			scope Pen pn = new Pen(Color.fromRgb(colors[i % $]));
+		Rect[] szrects;
+		foreach(bx; pathToCurr) {
+			auto clr = Color.fromRgb(colors[i % $]);
+			scope Pen pn = new Pen(clr);
+			auto rc = bx.rect();
 			pa.graphics.drawRectangle(pn, rc);
+
+			auto szstring = bx.sizeString;
+			auto tsz = pa.graphics.measureText(szstring, font);
+			Rect trc = Rect(rc.x, rc.y, tsz.width, tsz.height);
+
+			foreach(szrc; szrects)
+				if (trc.intersectsWith(szrc))
+					trc.y = szrc.bottom;
+			if (rc.contains(trc))
+				pa.graphics.drawText(szstring, font, clr, trc);
+			szrects ~= trc;
 			i++;
 		}
+	}
+
+	void EmptyMsgQueue()
+	{
+		while(receiveTimeout(dur!"msecs"(0), 
+					(MsgAnalyzing m) {}, 
+					(MsgSearchComplete m) {}, 
+					(MsgCancel m) {}
+			)) {};
 	}
 
 	void OnTimer(Timer sender, EventArgs ea)
@@ -266,13 +291,13 @@ class Visual : dfl.form.Form
 		cancelSearch = false;
 		complete = false;
 		nmsgAn = 0;
-		search_tid = spawnLinked(&searchDups, cast(shared)dirs, thisTid);
+		EmptyMsgQueue();
+		spawnLinked(&searchDups, cast(shared)dirs, thisTid);
 		//searchDups(cast(shared)dirs, thisTid);
 	}
 
 	void CancelSearch(Control, EventArgs)
 	{
-		//search_tid.send(MsgCancel());
 		cancelSearch = true;
 		lblStatus.text = "cancelling";
 	}
