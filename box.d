@@ -1,5 +1,5 @@
 module box;
-import fileops, rel, std.algorithm, std.array, std.string, dfl.drawing : Rect;
+import fileops, rel, std.algorithm, std.array, std.string, std.typecons, dfl.drawing : Rect;
 
 immutable small_size = 4_000_000;
 alias DrawFun = void delegate(double x, double y, double w, double h, Rel, Box);
@@ -228,10 +228,15 @@ class Similar(C)
 }
 
 alias SimilarDirs = Similar!(Set!int);
-alias SimilarBoxes = Similar!(Box[]);
+alias SimilarBoxes = Similar!(Tuple!(Box[], IFSObject[]));
 alias SimilarFiles = Similar!(Set!string);
 
-SimilarBoxes simBoxesOfSets(T)(Similar!(Set!T) s, Box[T] boxIndex)
+SimilarBoxes simBoxesOfSets(T)(Similar!(Set!T) s, Box[T] boxIndex, IFSObject[T] t2ifs)
 {
-	return s.fmap!(Box[])(set => set.data.keys.map!(id => boxIndex.get(id,null)).filter!(p => p !is null).array);
+	auto f(Set!T set) {
+		auto boxes = set.data.keys.map!(id => boxIndex.get(id,null)).filter!(p => p !is null).array;
+		auto ifs   = set.data.keys.map!(id => t2ifs.get(id,null)).array;
+		return tuple(boxes, ifs);
+	}
+	return s.fmap!(Tuple!(Box[], IFSObject[]))(&f);
 }

@@ -244,11 +244,11 @@ class Visual : dfl.form.Form
 			scope greenbr = new SolidBrush(Color.fromRgb(0x80FF80));
 			scope yellowbr = new SolidBrush(Color.fromRgb(0x80FFFF));
 			scope redbr = new SolidBrush(Color.fromRgb(0x8080FF));
-			foreach(bx; curSimBoxes.newer)
+			foreach(bx; curSimBoxes.newer[0])
 				pa.graphics.fillRectangle(greenbr, bx.rect);
-			foreach(bx; curSimBoxes.same)
+			foreach(bx; curSimBoxes.same[0])
 				pa.graphics.fillRectangle(yellowbr, bx.rect);
-			foreach(bx; curSimBoxes.older)
+			foreach(bx; curSimBoxes.older[0])
 				pa.graphics.fillRectangle(redbr, bx.rect);
 		}
 
@@ -369,6 +369,9 @@ class Visual : dfl.form.Form
 		msgAnalyzing.nullify();
 		SimilarDirs[int] sim = cast(SimilarDirs[int]) m.sim;
 		SimilarFiles[string] simf = cast(SimilarFiles[string]) m.simf;
+		IFSObject[int] id2dir = cast(IFSObject[int]) m.id2dir;
+		IFSObject[string] fname2file = cast(IFSObject[string]) m.fname2file;
+
 
 		Box[int] boxIndex;
 		Box[string] fboxIndex;
@@ -379,11 +382,11 @@ class Visual : dfl.form.Form
 
 		SimilarBoxes[int] simboxes;
 		foreach(id; sim.byKey)
-			simboxes[id] = simBoxesOfSets(sim[id], boxIndex);
+			simboxes[id] = simBoxesOfSets(sim[id], boxIndex, id2dir);
 
 		SimilarBoxes[string] fsimboxes;
 		foreach(id; simf.byKey)
-			fsimboxes[id] = simBoxesOfSets(simf[id], fboxIndex);
+			fsimboxes[id] = simBoxesOfSets(simf[id], fboxIndex, fname2file);
 
 		coloring = new Coloring(simboxes, fsimboxes);
 		btnCancel.visible = false;
@@ -416,6 +419,18 @@ void addOlder(R,I,S)(R old_ids, I myid, ref S[I] sim)
 }
 
 shared bool cancelSearch;
+
+void addToCache(ref IFSObject[int] id2dir, DirInfo[] dirs)
+{
+	foreach(di; dirs)
+		id2dir[di.ID] = di;
+}
+
+void addToCache(ref IFSObject[string] fname2file, PFileInfo[] files)
+{
+	foreach(fi; files)
+		fname2file[fi.fullName] = fi;
+}
 
 void searchDups(shared(DirInfo[]) _dirs, Tid gui_tid)
 {
@@ -473,6 +488,7 @@ void searchDups(shared(DirInfo[]) _dirs, Tid gui_tid)
 		writeln("40");
 
 		SimilarDirs[int] sim;
+		IFSObject[int] id2dir;
 		foreach(r; reslist) {
 			r.calcProfit();
 			SimilarDirs s;
@@ -485,9 +501,14 @@ void searchDups(shared(DirInfo[]) _dirs, Tid gui_tid)
 			s.older.addMany(r.older.ids);
 			sim[r.dir.ID] = s;
 			addOlder(r.older.ids, r.dir.ID, sim);
+
+			id2dir.addToCache(r.same);
+			id2dir.addToCache(r.older);
+			id2dir.addToCache([r.dir]);
 		}
 
 		SimilarFiles[string] simf;
+		IFSObject[string] fname2file;
 		foreach(r; freslist) {
 			r.calcProfit();
 			SimilarFiles s;
@@ -500,9 +521,13 @@ void searchDups(shared(DirInfo[]) _dirs, Tid gui_tid)
 			s.older.addMany(r.older.names);
 			simf[r.dir.fullName] = s;
 			addOlder(r.older.names, r.dir.fullName, simf);
+
+			fname2file.addToCache(r.same);
+			fname2file.addToCache(r.older);
+			fname2file.addToCache([r.dir]);
 		}
 		writeln("complete, sending MsgSearchComplete");
-		gui_tid.send(MsgSearchComplete(cast(shared)sim, cast(shared)simf));
+		gui_tid.send(MsgSearchComplete(cast(shared)sim, cast(shared)simf,  cast(shared)id2dir, cast(shared)fname2file));
 	} catch(Cancelled c) {
 		writeln("cancelled");
 		gui_tid.send(MsgCancel());

@@ -1,5 +1,5 @@
 module details;
-import dfl.all, box, resizer;
+import dfl.all, box, resizer, fileops;
 
 class Details: dfl.form.Form
 {
@@ -24,10 +24,10 @@ class Details: dfl.form.Form
 		text = "Details";
 		clientSize = dfl.all.Size(696, 506);
 		int y = 8;
-		y = addList([subj],     y, label1, lvSubject, "Subject:", 64);
-		y = addList(sbx.newer,  y, label2, lvNewer, "These objects are newer:");
-		y = addList(sbx.same,   y, label3, lvSame, "These objects are same:");
-		y = addList(sbx.older,  y, label4, lvOlder, "These objects are older:");
+		y = addList([subj.item],     y, label1, lvSubject, "Subject:", 64);
+		y = addList(sbx.newer[1],  y, label2, lvNewer, "These objects are newer:");
+		y = addList(sbx.same[1],   y, label3, lvSame, "These objects are same:");
+		y = addList(sbx.older[1],  y, label4, lvOlder, "These objects are older:");
 
 		btnClose = new dfl.button.Button();
 		btnClose.name = "btnClose";
@@ -51,9 +51,9 @@ class Details: dfl.form.Form
 
 	override void onResize(EventArgs ea) { resizer.go(); }
 	
-	int addList(Box[] boxes, int y, ref Label label, ref ListView lv, string caption, int height = 160)
+	int addList(IFSObject[] items, int y, ref Label label, ref ListView lv, string caption, int height = 160)
 	{
-		if (boxes.length > 0) {
+		if (items.length > 0) {
 			label = new dfl.label.Label();
 			label.name = caption;
 			label.text = caption;
@@ -78,8 +78,8 @@ class Details: dfl.form.Form
 				lv.columns.add(col);
 			}
 
-			foreach(bx; boxes) 
-				lv.addRow([bx.item.fullName, bx.sizeString]);
+			foreach(item; items) 
+				lv.addRow([item.fullName, item.getSize.sizeString]);
 
 			y = lv.bounds.bottom + 8;
 		}

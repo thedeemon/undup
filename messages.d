@@ -1,5 +1,5 @@
 module messages;
-import box;
+import box, fileops;
 
 struct MsgAnalyzing {
 	string name;
@@ -10,6 +10,8 @@ struct MsgAnalyzing {
 struct MsgSearchComplete {
 	shared SimilarDirs[int] sim;
 	shared SimilarFiles[string] simf;
+	shared IFSObject[int] id2dir;
+	shared IFSObject[string] fname2file;
 }
 
 struct MsgCancel {}
