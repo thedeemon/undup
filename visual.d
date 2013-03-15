@@ -1,6 +1,6 @@
 module visual;
-import dfl.all, fileops, messages, box, std.range, std.algorithm, std.stdio, std.math, std.c.windows.windows, 
-	dfl.internal.winapi, std.string, rel, std.concurrency, std.typecons, core.time;
+import dfl.all, fileops, messages, box, details, std.range, std.algorithm, std.stdio, std.math, std.conv,
+	std.c.windows.windows, dfl.internal.winapi, std.string, rel, std.concurrency, std.typecons, core.time;
 
 class MyPictureBox : PictureBox {
 	this() 
@@ -59,19 +59,19 @@ class Visual : dfl.form.Form
 	Timer timer; // for receiving messages
 	Font font;
 
-	this(DirInfo[] _dirs) {
+	this(DirInfo[] _dirs, string[] names) {
 		W = 1040; H = 670;
 		dirs = _dirs;
 		writeln("making box tree");
 		//DirInfo[] topdirs = dirs.filter!(di => di.parent is null).array;
 		top = dirs.filter!(di => di.parent is null).map!(boxOfDir).array;
 		coloring = new Coloring();
-		initializeVisual();
+		initializeVisual(names);
 	}
 
-	void initializeVisual()
+	void initializeVisual(string[] names)
 	{
-		text = "Visual search";
+		text = "Undup: " ~ names.joiner(", ").array.to!string;
 		clientSize = dfl.all.Size(1040, 730);
 
 		picBox = new MyPictureBox();
@@ -115,6 +115,7 @@ class Visual : dfl.form.Form
 
 		picBox.mouseMove ~= &OnMouseMove;
 		picBox.paint ~= &OnPicPaint;
+		picBox.doubleClick ~= &OnDblClick;
 
 		btnSearch.click ~= &StartSearch;
 		btnCancel.click ~= &CancelSearch;
@@ -228,6 +229,13 @@ class Visual : dfl.form.Form
 				picBox.invalidate();
 			}
 		}
+	}
+
+	void OnDblClick(Control,EventArgs)
+	{
+		if (curSimBoxes is null) return;
+		auto frm = new Details(curSimBoxes, lastHoveredBox);
+		frm.showDialog(this);
 	}
 
 	void OnPicPaint(Control c, PaintEventArgs pa)

@@ -1,5 +1,5 @@
 module scans;
-import dfl.all, newscan, fileops, visual, std.file, std.stdio, std.conv, std.datetime, std.algorithm, 
+import dfl.all, newscan, fileops, visual, resizer, std.file, std.stdio, std.conv, std.datetime, std.algorithm, 
 	std.range, std.array, std.string;
 
 class Scans: dfl.form.Form
@@ -13,6 +13,7 @@ class Scans: dfl.form.Form
 	dfl.button.Button btnAbout;
 	dfl.label.Label label1;
 	//~Entice Designer variables end here.
+	Resizer resizer;
 	
 	this()
 	{
@@ -82,8 +83,22 @@ class Scans: dfl.form.Form
 		btnNew.click ~= &OnNewScan;
 		btnShow.click ~= &OnShowScans;
 		btnRemove.click ~= &OnRemove;
+		
+		this.minimumSize = Size(500, 200);
+
+		resizer = new Resizer(this);
+		resizer.let(lvScans, XCoord.resizes, YCoord.resizes);
+		resizer.let(label1,  XCoord.resizes, YCoord.moves);
+		resizer.let(btnRemove, XCoord.scalesPos, YCoord.stays);
+		resizer.let(btnAbout, XCoord.moves, YCoord.stays);
+		resizer.prepare();
 
 		FillTable();
+	}
+
+	override void onResize(EventArgs ea)
+	{
+		resizer.go();
 	}
 
 	void OnNewScan(Control, EventArgs)
@@ -134,8 +149,9 @@ class Scans: dfl.form.Form
 	body 
 	{
 		writeln("reading ");
+		string[] names = fnames.map!getScanName.array;
 		DirInfo[] dirs = useIndex(joinDumps(fnames));
-		auto frm = new Visual(dirs);
+		auto frm = new Visual(dirs, names);
 		frm.showDialog(this);
 	}
 
@@ -144,4 +160,13 @@ class Scans: dfl.form.Form
 		this(string str) { s = str; }
 	}
 }
+
+string getScanName(string fname)
+{
+	DumpHeader hdr;
+	if (readHeader(fname, hdr))
+		return hdr.name;
+	return "-";
+}
+
 

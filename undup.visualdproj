@@ -188,11 +188,13 @@
  </Config>
  <Folder name="undup">
   <File path="box.d" />
+  <File path="details.d" />
   <File path="fileops.d" />
   <File path="main.d" />
   <File path="messages.d" />
   <File path="newscan.d" />
   <File path="rel.d" />
+  <File path="resizer.d" />
   <File path="scans.d" />
   <File path="visual.d" />
  </Folder>

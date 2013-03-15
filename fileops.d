@@ -75,7 +75,7 @@ class Dummy : IFSObject {
 	long sz;
 	DirInfo parent;
 
-	string fullName()  { return parent is null ? "..." : parent.fullName() ~ "/..."; }	
+	string fullName()  { return parent is null ? "..." : parent.fullName() ~ "..."; }	
 	long getSize() { return sz; }
 	int getID() { return -1; }
 
@@ -118,7 +118,7 @@ class PFileInfo : FileInfo, IFSObject {
 	{
 		if (parent is null) return name;
 		if (cached_fullname is null) 
-			cached_fullname = parent.fullName() ~ "/" ~ name;
+			cached_fullname = parent.fullName() ~ name;
 		return cached_fullname;
 	}
 
@@ -191,9 +191,9 @@ class DirInfo : DirInfoBase, IFSObject {
 
 	string fullName() 
 	{
-		if (parent is null) return name;
+		if (parent is null) return name ~ "/";
 		if (cached_fullname is null) 
-			cached_fullname = parent.fullName() ~ "/" ~ name;
+			cached_fullname = parent.fullName() ~ name ~ "/";
 		return cached_fullname;
 	}
 
@@ -274,7 +274,7 @@ void makeScan(string fname, DumpHeader hdr, Tid gui_tid)
 
 			sort(files);
 			sort!((a,b)=> a[1] < b[1])(subdirs);
-			auto dname = dir[0] == hdr.path ? hdr.name : justName(dir[0]);
+			auto dname = dir.name == hdr.path ? hdr.name : justName(dir.name);
 			auto di = new DirInfo0(dir.id, dir.parentID, dname, subdirs.map!(p => p[0]).array, files);
 			save(di, all);
 		} catch(FileException ex) {		}
@@ -295,14 +295,6 @@ bool readHeader(string fname, ref DumpHeader hdr)
 		return true;
 	} catch(Throwable ex) { return false; } 
 }
-
-/*void showDump(string fname)
-{
-	DirInfo0[] dirs = readDump(fname);
-	DirInfo0[] index = makeIndex(dirs);
-	foreach(di; dirs)
-		writeln(di.show(index));
-}*/
 
 DirInfo0[] readDump(string fname)
 {
@@ -378,7 +370,6 @@ long truncTime(long t) pure
 
 bool sameTime(in FileInfo f1, in FileInfo f2) pure // t1,t2 in hnsecs, same if dt < 3 sec
 {
-	//return abs(f1.modTime - f2.modTime) < 50000000;
 	return truncTime(f1.modTime) == truncTime(f2.modTime);
 }
 
@@ -536,70 +527,3 @@ body
 	}
 	if (en > st) f(items[st..en+1], 1.0);
 }
-
-void on_inf_err(PFileInfo[] fs, InferenceError e) 
-{ 
-	foreach(k; e.abc)
-		writeln(fs[k].fullName());
-}
-
-/*void searchDups(string fname)
-{
-	DirInfo[] dirs = useIndex(readDump(fname));
-
-	PFileInfo[] bigfiles = dirs.map!(
-									 di => di.files.filter!(fi => fi.size > 50_000_000L).map!(fi => new PFileInfo(fi, di))									 
-									 ).joiner.array;
-
-	auto rc = new RelCache();
-	ResultItem!DirInfo[] reslist = [];
-	ResultItem!PFileInfo[] freslist = [];
-
-
-	void on_inf_error(DirInfo[] ds, InferenceError e)
-	{
-		foreach(k; e.abc)
-			writeln(ds[k].fullName());
-		foreach(ii; e.abc) {
-			foreach(jj; e.abc)
-				writef("%s ", rc.get(ds[ii].ID,ds[jj].ID));
-			writeln();
-		}
-	}
-
-	cluster!(PFileInfo, (fs,prg) => analyseCluster!(PFileInfo, (a,b) => relate(a,b,rc), on_inf_err, true)(fs, freslist))(bigfiles);
-	foreach(r; freslist) 
-		r.calcProfit();
-	showResults!(PFileInfo)(freslist);
-
-	cluster!(DirInfo, (ds,prg) => analyseCluster!(DirInfo, (a,b) => compDirsCaching(a, b, rc), on_inf_error, true)(ds, reslist))(dirs);
-
-	bool[int] reported;
-	foreach(r; reslist) reported[r.dir.ID] = true;
-	reslist = reslist.filter!(r => r.dir.parent.ID !in reported).array;
-
-	foreach(r; reslist) 
-		r.calcProfit();
-
-	showResults!(DirInfo)(reslist);
-}*/
-
-void showResults(T)(ResultItem!T[] reslist)
-{
-	reslist.sort!((a,b) => a.profit > b.profit);
-	foreach(res; reslist) {	
-		if (res.profit == 0) break;
-		writefln("%s, profit=%s", res.dir.fullName(), res.profit);
-		if (res.same.length > 0) {
-			writeln(" is same as:");
-			foreach(di; res.same) writefln("  %s (%s)", di.fullName(), di.getSize());
-		}
-		if (res.older.map!(d => d.getSize).sum > 0) {
-			writeln(" older versions:");
-			foreach(di; res.older)
-				if (di.getSize() > 0)
-					writefln("  %s (%s)", di.fullName(), di.getSize());
-		}		
-	}
-}
-
