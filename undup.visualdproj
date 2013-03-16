@@ -140,7 +140,7 @@
   <otherDMD>0</otherDMD>
   <program>$(DMDInstallDir)windows\bin\dmd.exe</program>
   <imppath>C:\D\dmd2\import</imppath>
-  <fileImppath />
+  <fileImppath>.</fileImppath>
   <outdir>$(ConfigurationName)</outdir>
   <objdir>$(OutDir)</objdir>
   <objname />
@@ -191,6 +191,7 @@
   <File path="box.d" />
   <File path="details.d" />
   <File path="fileops.d" />
+  <File path="legend.d" />
   <File path="main.d" />
   <File path="messages.d" />
   <File path="newscan.d" />

@@ -155,7 +155,9 @@ class Scans: dfl.form.Form
 	{ assert(fnames.length > 0); }
 	body 
 	{
-		writeln("reading ");
+		version (verbose) writeln("reading ");
+		Cursor.current = Cursors.waitCursor;
+		scope(exit) Cursor.current = Cursors.arrow;
 		string[] names = fnames.map!getScanName.array;
 		DirInfo[] dirs = useIndex(joinDumps(fnames));
 		auto frm = new Visual(dirs, names);

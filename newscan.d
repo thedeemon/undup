@@ -238,7 +238,7 @@ class NewScan: dfl.form.Form
 			auto str = "Scanning " ~ msgScanning.name;
 			lblStatus.text = str;
 			progressBar.value = msgScanning.i;
-			writeln("lblStatus.text = ", str);
+			version (verbose) writeln("lblStatus.text = ", str);
 		}
 	}
 
@@ -246,13 +246,13 @@ class NewScan: dfl.form.Form
 	{
 		progressBar.maximum = m.n;
 		progressBar.value = 0;
-		writeln("RcvMsgNumOfDirs ", m.n);
+		version (verbose) writeln("RcvMsgNumOfDirs ", m.n);
 	}
 
 	void RcvMsgScanning(MsgScanning m)
 	{
 		msgScanning = m;
-		writeln("RcvMsgScanning ", m.name, " ", m.i);
+		version (verbose) writeln("RcvMsgScanning ", m.name, " ", m.i);
 	}
 
 	void RcvMsgDone(MsgDone m)
@@ -262,7 +262,7 @@ class NewScan: dfl.form.Form
 		running = false;
 		progressBar.value = 0;
 		btnCancel.text = "Close";
-		writeln("RcvMsgDone");
+		version (verbose) writeln("RcvMsgDone");
 		timer.stop();
 	}
 

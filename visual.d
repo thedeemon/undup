@@ -1,5 +1,5 @@
 module visual;
-import dfl.all, fileops, messages, box, details, std.range, std.algorithm, std.stdio, std.math, std.conv,
+import dfl.all, fileops, messages, box, details, legend, std.range, std.algorithm, std.stdio, std.math, std.conv,
 	std.c.windows.windows, dfl.internal.winapi, std.string, rel, std.concurrency, std.typecons, core.time;
 
 class MyPictureBox : PictureBox {
@@ -46,7 +46,7 @@ class Visual : dfl.form.Form
 	DirInfo[] dirs;
 	MyPictureBox picBox;
 	dfl.label.Label lblFile, lblStatus;
-	dfl.button.Button btnSearch, btnCancel;
+	dfl.button.Button btnSearch, btnCancel, btnHelp;
 	dfl.progressbar.ProgressBar progressBar;
 
 	Rect[] volumeRects;
@@ -62,7 +62,7 @@ class Visual : dfl.form.Form
 	this(DirInfo[] _dirs, string[] names) {
 		W = 1040; H = 670;
 		dirs = _dirs;
-		writeln("making box tree");
+		version (verbose) writeln("making box tree");
 		top = dirs.filter!(di => di.parent is null).map!(boxOfDir).array;
 		coloring = new Coloring();
 		initializeVisual(names);
@@ -71,46 +71,52 @@ class Visual : dfl.form.Form
 	void initializeVisual(string[] names)
 	{
 		text = "Undup: " ~ names.joiner(", ").array.to!string;
-		clientSize = dfl.all.Size(1040, 730);
+		clientSize = Size(1040, 730);
 
 		picBox = new MyPictureBox();
 		picBox.name = "picBox";
-		picBox.sizeMode = dfl.all.PictureBoxSizeMode.NORMAL;
-		picBox.bounds = dfl.all.Rect(0, 24, W, H);
+		picBox.sizeMode = PictureBoxSizeMode.NORMAL;
+		picBox.bounds = Rect(0, 24, W, H);
 		picBox.parent = this;
 
 		lblFile = new dfl.label.Label();
 		lblFile.name = "lblFile";
 		lblFile.text = "---";
-		lblFile.textAlign = dfl.all.ContentAlignment.MIDDLE_LEFT;
-		lblFile.bounds = dfl.all.Rect(0, H+24, 1000, 24);
+		lblFile.textAlign = ContentAlignment.MIDDLE_LEFT;
+		lblFile.bounds = Rect(0, H+24, W-40, 24);
 		lblFile.parent = this;
 
 		lblStatus = new dfl.label.Label();
 		lblStatus.name = "lblStatus";
-		lblStatus.bounds = dfl.all.Rect(0, 0, 384, 24);
+		lblStatus.bounds = Rect(0, 0, 384, 24);
 		lblStatus.parent = this;
-		//~DFL dfl.button.Button=btnSearch
+
 		btnSearch = new dfl.button.Button();
 		btnSearch.name = "btnSearch";
 		btnSearch.text = "Search";
-		btnSearch.bounds = dfl.all.Rect(392, 0, 72, 24);
+		btnSearch.bounds = Rect(392, 0, 72, 24);
 		btnSearch.parent = this;
-		//~DFL dfl.button.Button=btnCancel
+
 		btnCancel = new dfl.button.Button();
 		btnCancel.name = "btnCancel";
 		btnCancel.text = "Cancel";
-		btnCancel.bounds = dfl.all.Rect(704, 0, 56, 24);
+		btnCancel.bounds = Rect(704, 0, 56, 24);
 		btnCancel.parent = this;
 		btnCancel.visible = false;
-		//~DFL dfl.progressbar.ProgressBar=progressBar
+
 		progressBar = new dfl.progressbar.ProgressBar();
 		progressBar.name = "progressBar";
-		progressBar.bounds = dfl.all.Rect(472, 0, 224, 24);
+		progressBar.bounds = Rect(472, 0, 224, 24);
 		progressBar.parent = this;
 		progressBar.minimum = 0;
 		progressBar.maximum = 1000;
 		progressBar.value = 0;
+
+		btnHelp = new dfl.button.Button();
+		btnHelp.name = "btnHelp";
+		btnHelp.text = "?";
+		btnHelp.bounds = Rect(W-32, H+28, 24, 24);
+		btnHelp.parent = this;
 
 		picBox.mouseMove ~= &OnMouseMove;
 		picBox.paint ~= &OnPicPaint;
@@ -118,6 +124,7 @@ class Visual : dfl.form.Form
 
 		btnSearch.click ~= &StartSearch;
 		btnCancel.click ~= &CancelSearch;
+		btnHelp.click ~= &OnHelp;
 
 		timer = new Timer;
 		timer.interval = 100;
@@ -155,7 +162,7 @@ class Visual : dfl.form.Form
 
 	void Resized()
 	{
-		writeln("resized ", lastSizeChange.sz);
+		version (verbose) writeln("resized ", lastSizeChange.sz);
 		lastSizeChange.nullify();
 		W = clientSize.width;
 		int prgh = progressBar.visible ? 24 : 0;
@@ -163,7 +170,8 @@ class Visual : dfl.form.Form
 		Layout(top, 0.0,0.0, W,H);
 		volumeRects = top.map!(bx => bx.rect).array;
 		displayBoxes();		
-		lblFile.bounds = dfl.all.Rect(0, H + prgh, W, 24);
+		lblFile.bounds = Rect(0, H + prgh, W-40, 24);
+		btnHelp.bounds = Rect(W-32, H+4 + prgh, 24, 24);
 	}
 
 	void displayBoxes()
@@ -297,7 +305,7 @@ class Visual : dfl.form.Form
 			try {
 				again = receiveTimeout(dur!"msecs"(0), &RcvMsgAnalyzing, &RcvMsgSearchComplete, &RcvMsgCancel);
 			} catch(LinkTerminated lt) {
-				writeln("LinkTerminated");
+				version (verbose) writeln("LinkTerminated");
 				terminated = true;
 			}
 		} while(again);
@@ -313,7 +321,7 @@ class Visual : dfl.form.Form
 		if (!msgAnalyzing.isNull) {
 			lblStatus.text = format("analyzing %s [%s]", msgAnalyzing.name, msgAnalyzing.sz);
 			progressBar.value = cast(int) (msgAnalyzing.progress * 1000);
-			writeln("got msgAnalyzing ", nmsgAn);
+			version (verbose) writeln("got msgAnalyzing ", nmsgAn);
 		}
 
 		if (!lastSizeChange.isNull) {
@@ -321,6 +329,12 @@ class Visual : dfl.form.Form
 			if (dt.msecs > 200)
 				Resized();
 		}
+	}
+
+	void OnHelp(Control, EventArgs)
+	{
+		auto frm = new Legend();
+		frm.showDialog(this);
 	}
 
 	void StartSearch(Control, EventArgs)
@@ -343,7 +357,7 @@ class Visual : dfl.form.Form
 
 	void RcvMsgCancel(MsgCancel m)
 	{
-		writeln("RcvMsgCancel");
+		version (verbose) writeln("RcvMsgCancel");
 		btnSearch.visible = true;
 		btnCancel.visible = false;
 		progressBar.value = 0;
@@ -363,14 +377,13 @@ class Visual : dfl.form.Form
 
 	void RcvMsgSearchComplete(MsgSearchComplete m)
 	{
-		writeln("RcvMsgSearchComplete");
+		version (verbose) writeln("RcvMsgSearchComplete");
 		complete = true;
 		msgAnalyzing.nullify();
 		SimilarDirs[int] sim = cast(SimilarDirs[int]) m.sim;
 		SimilarFiles[string] simf = cast(SimilarFiles[string]) m.simf;
 		IFSObject[int] id2dir = cast(IFSObject[int]) m.id2dir;
 		IFSObject[string] fname2file = cast(IFSObject[string]) m.fname2file;
-
 
 		Box[int] boxIndex;
 		Box[string] fboxIndex;
@@ -392,11 +405,13 @@ class Visual : dfl.form.Form
 		progressBar.visible = false;
 		lblStatus.text = "";
 		displayBoxes();
-		picBox.bounds = dfl.all.Rect(0, 0, W, H);
+		picBox.bounds = Rect(0, 0, W, H);
 		picBox.invalidate();
-		lblFile.bounds = dfl.all.Rect(0, H, W, 24);
+		lblFile.bounds = Rect(0, H, W-40, 24);
+		btnHelp.bounds = Rect(W-32, H+4, 24, 24);
 		clientSize = dfl.all.Size(W, H + 36);
-		writeln("RcvMsgSearchComplete ok");
+		
+		version (verbose) writeln("RcvMsgSearchComplete ok");
 	}
 
 }//class Visual
@@ -434,7 +449,7 @@ void addToCache(ref IFSObject[string] fname2file, PFileInfo[] files)
 void searchDups(shared(DirInfo[]) _dirs, Tid gui_tid)
 {
 	DirInfo[] dirs = cast(DirInfo[]) _dirs;
-	writeln("searchDups ", dirs.length);
+	version (verbose) writeln("searchDups ", dirs.length);
 
 	gui_tid.send(MsgAnalyzing("test", 123, 0.175));
 
@@ -444,47 +459,37 @@ void searchDups(shared(DirInfo[]) _dirs, Tid gui_tid)
 	Rel comp(DirInfo a, DirInfo b) { return compDirsCaching(a, b, rc); }
 	void ancd(DirInfo[] ds, float prg) 
 	{
-		//writeln("11");
-		//while(receiveTimeout(dur!"msecs"(0), (MsgCancel m) { throw new Cancelled(); })) {}
 		if (cancelSearch) throw new Cancelled();
-		//writeln("12");
 		gui_tid.send(MsgAnalyzing(ds[0].name, ds.length, prg * 0.75));
-		//writeln("13");
 		analyseCluster!(DirInfo, false)(ds, &comp, reslist);
 	}
-	writeln("10");
+	version (verbose) writeln("10");
 	try {
 		if (dirs.length > 0)
 			cluster!(DirInfo)(dirs, &ancd);
-		writeln("20");
+		version (verbose) writeln("20");
 
 		bool[int] reported;
 		foreach(r; reslist) reported[r.dir.ID] = true;
-		writeln("22");
+		version (verbose) writeln("22");
 		reslist = reslist.filter!(r => r.dir.parent !is null ? (r.dir.parent.ID !in reported) : true).array;
 
-		writeln("24");
 		PFileInfo[] bigfiles = dirs.map!(
 										 di => di.files.filter!(fi => fi.size > 50_000_000L).map!(fi => new PFileInfo(fi, di))									 
 										 ).joiner.array;
-		writeln("26");
 		ResultItem!PFileInfo[] freslist = [];
 
 		Rel compf(PFileInfo a, PFileInfo b) { return relate(a,b,rc); }
 		void ancf(PFileInfo[] fs, float prg) 
 		{ 
-			//writeln("31");
-			//while(receiveTimeout(dur!"msecs"(0), (MsgCancel m) { throw new Cancelled(); })) {}
 			if (cancelSearch) throw new Cancelled();
-			//writeln("32");
 			send(gui_tid, MsgAnalyzing(fs[0].name, fs.length, 0.75 + prg * 0.25));
-			//writeln("33");
 			analyseCluster!(PFileInfo, false)(fs, &compf, freslist); 
 		}
-		writeln("30");
+		version (verbose) writeln("30");
 		if (bigfiles.length > 0)
 			cluster!(PFileInfo)(bigfiles, &ancf);
-		writeln("40");
+		version (verbose) writeln("40");
 
 		SimilarDirs[int] sim;
 		IFSObject[int] id2dir;
@@ -525,36 +530,13 @@ void searchDups(shared(DirInfo[]) _dirs, Tid gui_tid)
 			fname2file.addToCache(r.older);
 			fname2file.addToCache([r.dir]);
 		}
-		writeln("complete, sending MsgSearchComplete");
+		version (verbose) writeln("complete, sending MsgSearchComplete");
 		gui_tid.send(MsgSearchComplete(cast(shared)sim, cast(shared)simf,  cast(shared)id2dir, cast(shared)fname2file));
 	} catch(Cancelled c) {
-		writeln("cancelled");
+		version (verbose) writeln("cancelled");
 		gui_tid.send(MsgCancel());
 	} catch(MailboxFull mf) {
-		writeln("mbox full");
+		version (verbose) writeln("mbox full");
 	}
-	writeln("search thread finishes");
+	version (verbose) writeln("search thread finishes");
 }
-
-/*void vsearch(string fname)
-{
-	writeln("reading ", fname);
-	DirInfo[] dirs = useIndex(readDump(fname));
-
-	writeln("getting top");
-	DirInfo[] topdirs = dirs.filter!(di => di.parent is null).array;
-	writeln("making box tree");
-	Box[] top = topdirs.map!(boxOfDir).array;
-
-	try
-	{
-		Application.enableVisualStyles();
-		Application.autoCollect = false;
-		//@  Other application initialization code here.
-		Application.run(new Visual(top, dirs));
-	}
-	catch(Throwable o)
-	{
-		msgBox(o.toString(), "Fatal Error", MsgBoxButtons.OK, MsgBoxIcon.ERROR);		
-	}
-}*/
