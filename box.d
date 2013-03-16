@@ -12,7 +12,7 @@ string sizeString(long sz)
 	if (sz >= GB) return format("%s.%s GB", sz / GB, (sz / (GB/10)) % 10);
 	if (sz >= 10*MB) return format("%s MB", sz / MB);
 	if (sz >= MB) return format("%s.%s MB", sz / MB, (sz / (MB/10)) % 10);
-	return format("%s bytes", sz);
+	return format("%s", sz);
 }
 
 class Box {
