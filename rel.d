@@ -64,13 +64,6 @@ immutable Rel[3][] rules = [
 	[Rel.Different, Rel.Same,  Rel.Different]
 ];
 
-class InferenceError : Error 
-{
-	int[] abc;
-	this(int[] ijk, string file = __FILE__, size_t line = __LINE__) { super("InferenceError", file, line, null); abc = ijk; }
-	override string toString() { return format("InferenceError %s", abc);}
-}
-
 class RelMat {
 	int N;
 	Rel[][] rel;
@@ -103,45 +96,19 @@ class RelMat {
 
 	void add(int i, int j, Rel r)
 	{
-		SList!(Tuple!(int,int)) added;
 		set(i,j, r);
-		added.insert(tuple(i,j));		
-		while(!added.empty) {
-			auto ij = added.removeAny();
-			i = ij[0]; j = ij[1];
-			auto rij = rel[i][j];
-			foreach(rule; rules) 
-				if (rule[0]==rij)
-					foreach(k; 0..N)
-						if (rel[j][k]==rule[1]) {
-							if (rel[i][k]==Rel.Unknown) {
-								set(i,k, rule[2]);
-								//added.insert(tuple(i,k));
-							} else
-								if(rel[i][k] != rule[2]) {
-									writeln("RelMat.add: inference rule violation found(1)");
-									writefln("rule: %s", rule);
-									writefln("i=%s j=%s k=%s rel[ij]=%s rel[jk]=%s rel[ik]=%s", i,j,k, rel[i][j], rel[j][k], rel[i][k]);
-									throw new InferenceError([i,j,k]);
-								}
-						}
-			foreach(rule; rules)
-				if (rule[1]==rij) {
-					auto ir0 = inv(rule[0]), ir2 = inv(rule[2]);
-					foreach(k; 0..N)
-						if (rel[i][k]==ir0) {
-							if (rel[j][k]==Rel.Unknown) {
-								set(k,j, rule[2]);
-								//added.insert(tuple(k,j));
-							} else
-								if(rel[j][k] != ir2) {
-									writeln("RelMat.add: inference rule violation found(2)");
-									writefln("rule: %s", rule);
-									writefln("k=%s i=%s j=%s rel[ki]=%s rel[ij]=%s rel[kj]=%s", k,i,j, rel[k][i], rel[i][j], rel[k][j]);
-									throw new InferenceError([k,i,j]);
-								}
-						}//if rule[0]
-				} //if rule[1]
-		}//loop added
-	}//add()
+		auto rij = rel[i][j];
+		foreach(rule; rules) 
+			if (rule[0]==rij)
+				foreach(k; 0..N)
+					if (rel[j][k]==rule[1] && rel[i][k]==Rel.Unknown) 
+						set(i,k, rule[2]);					
+		foreach(rule; rules)
+			if (rule[1]==rij) {
+				auto ir0 = inv(rule[0]), ir2 = inv(rule[2]);
+				foreach(k; 0..N)
+					if (rel[i][k]==ir0 && rel[j][k]==Rel.Unknown) 
+						set(k,j, rule[2]);					
+			} 
+	}
 }

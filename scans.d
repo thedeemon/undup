@@ -1,6 +1,6 @@
 module scans;
-import dfl.all, newscan, fileops, visual, resizer, std.file, std.stdio, std.conv, std.datetime, std.algorithm, 
-	std.range, std.array, std.string;
+import dfl.all, newscan, fileops, visual, resizer, about, std.file, std.stdio, std.conv, 
+	std.datetime, std.algorithm, std.range, std.array, std.string;
 
 class Scans: dfl.form.Form
 {
@@ -83,6 +83,7 @@ class Scans: dfl.form.Form
 		btnNew.click ~= &OnNewScan;
 		btnShow.click ~= &OnShowScans;
 		btnRemove.click ~= &OnRemove;
+		btnAbout.click ~= &OnAbout;
 		
 		this.minimumSize = Size(500, 200);
 
@@ -99,6 +100,12 @@ class Scans: dfl.form.Form
 	override void onResize(EventArgs ea)
 	{
 		resizer.go();
+	}
+
+	void OnAbout(Control, EventArgs)
+	{
+		auto frm = new About();
+		frm.showDialog(this);
 	}
 
 	void OnNewScan(Control, EventArgs)

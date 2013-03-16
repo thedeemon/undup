@@ -187,6 +187,7 @@
   <filesToClean>*.obj;*.cmd;*.build;*.json;*.dep</filesToClean>
  </Config>
  <Folder name="undup">
+  <File path="about.d" />
   <File path="box.d" />
   <File path="details.d" />
   <File path="fileops.d" />

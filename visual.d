@@ -63,7 +63,6 @@ class Visual : dfl.form.Form
 		W = 1040; H = 670;
 		dirs = _dirs;
 		writeln("making box tree");
-		//DirInfo[] topdirs = dirs.filter!(di => di.parent is null).array;
 		top = dirs.filter!(di => di.parent is null).map!(boxOfDir).array;
 		coloring = new Coloring();
 		initializeVisual(names);

@@ -13,10 +13,10 @@ class Resizer
 		initialFormSize = f.clientSize;
 	}
 
-	void let(Control ctrl, Rule!(Coord.X) xrule, Rule!(Coord.Y) yrule)
+	void let(Control ctrl, Rule!(Coord.X) xrule, Rule!(Coord.Y) yrule, void delegate(Control) dg = null)
 	{
 		if (ctrl is null) return;
-		rules ~= new ResizeRule(ctrl, xrule, yrule, this);
+		rules ~= new ResizeRule(ctrl, xrule, yrule, this, dg);
 	}
 
 	void prepare()
@@ -39,13 +39,15 @@ class ResizeRule
 	Rule!(Coord.X) Xrule;
 	Rule!(Coord.Y) Yrule;
 	Size initialFormSize;
+	void delegate(Control) onResize;
 
-	this(Control c, Rule!(Coord.X) xrule, Rule!(Coord.Y) yrule, Resizer resizer)
+	this(Control c, Rule!(Coord.X) xrule, Rule!(Coord.Y) yrule, Resizer resizer, void delegate(Control) dg)
 	{
 		ctrl = c;
 		initialBounds = c.bounds;
 		Xrule = xrule; Yrule = yrule;
 		initialFormSize = resizer.initialFormSize;
+		onResize = dg;
 	}
 }
 
@@ -104,6 +106,7 @@ class ResizeAction
 	Control ctrl;
 	PosLen!(Coord.X) delegate(PosLen!(Coord.X), Size form_size) fx;
 	PosLen!(Coord.Y) delegate(PosLen!(Coord.Y), Size form_size) fy;
+	void delegate(Control) onResize;
 
 	this(ResizeRule r)
 	{
@@ -111,6 +114,7 @@ class ResizeAction
 		ctrl = r.ctrl;
 		fx = mkTrans!(Coord.X)(r, r.Xrule);
 		fy = mkTrans!(Coord.Y)(r, r.Yrule);
+		onResize = r.onResize;
 	}
 
 	void go(Size fsize)
@@ -118,5 +122,6 @@ class ResizeAction
 		auto xs = fx(toPosLen!(Coord.X)(initialBounds), fsize);
 		auto ys = fy(toPosLen!(Coord.Y)(initialBounds), fsize);
 		ctrl.bounds = Rect(xs.pos, ys.pos, xs.len, ys.len);
+		if (onResize != null) onResize(ctrl);
 	}
 }

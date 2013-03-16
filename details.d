@@ -40,9 +40,9 @@ class Details: dfl.form.Form
 		btnClose.click ~= (Control c, EventArgs a) => close();
 
 		resizer = new Resizer(this);
-		resizer.let(lvSubject, XCoord.resizes, YCoord.stays);
+		resizer.let(lvSubject, XCoord.resizes, YCoord.stays, &lvResized);
 		foreach(lv; [lvNewer, lvSame, lvOlder])
-			resizer.let(lv, XCoord.resizes, YCoord.scales);
+			resizer.let(lv, XCoord.resizes, YCoord.scales, &lvResized);
 		foreach(lbl; [label2, label3, label4])
 			resizer.let(lbl, XCoord.stays, YCoord.scalesPos);
 		resizer.let(btnClose, XCoord.moves, YCoord.moves);
@@ -50,6 +50,12 @@ class Details: dfl.form.Form
 	}
 
 	override void onResize(EventArgs ea) { resizer.go(); }
+
+	void lvResized(Control c)
+	{
+		auto lv = cast(ListView) c;
+		lv.columns[0].width = lv.bounds.width - 20 - lv.columns[1].width;
+	}
 	
 	int addList(IFSObject[] items, int y, ref Label label, ref ListView lv, string caption, int height = 160)
 	{
