@@ -476,6 +476,24 @@ class ResultItem(T) {
 	}
 }
 
+class Similar(C)
+{
+	Rel status;
+	IFSObject subj;
+	C newer, same, older;
+
+	this(Rel stat, IFSObject subject) { status = stat; subj = subject; }
+
+	Similar!D fmap(D)(D delegate(C) f)
+	{
+		auto s = new Similar!D(status, subj);
+		s.newer = f(newer);
+		s.same = f(same);
+		s.older = f(older);
+		return s;
+	}
+}
+
 void analyseCluster(T, bool talk)(T[] ds, Rel delegate(T,T) comp, ref ResultItem!T[] reslist)
 in 
 {

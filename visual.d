@@ -421,6 +421,7 @@ auto names(PFileInfo[] arr) { return arr.map!(fi => fi.fullName()); }
 
 int    key(DirInfo   di) { return di.ID; }
 string key(PFileInfo fi) { return fi.fullName(); }
+auto keys(T)(T[] arr) { return arr.map!(key); }
 
 void addOlder(R,I,S)(R old_ones, I myid, ref S[I] sim)
 {
@@ -497,47 +498,10 @@ void searchDups(shared(DirInfo[]) _dirs, Tid gui_tid)
 		version (verbose) writeln("40");
 
 		//gather results
-		SimilarDirs[int] sim;
-		IFSObject[int] id2dir;
-		foreach(r; reslist) {
-			r.calcProfit();
-			SimilarDirs s;
-			if (r.same.length==0) { //i'm green (newest)
-				s = new SimilarDirs(Rel.ImNewer, r.subj);
-			} else { // i'm yellow (have exact copies)
-				s = new SimilarDirs(Rel.Same, r.subj);
-				s.same.addMany(r.same.ids);
-			}
-			s.older.addMany(r.older.ids);
-			sim[r.subj.ID] = s;
-			addOlder(r.older, r.subj.ID, sim);
-
-			id2dir.addToCache(r.same);
-			id2dir.addToCache(r.older);
-			id2dir.addToCache([r.subj]);
-		}
-
-		SimilarFiles[string] simf;
-		IFSObject[string] fname2file;
-		foreach(r; freslist) {
-			r.calcProfit();
-			SimilarFiles s;
-			if (r.same.length==0) { //i'm green (newest)
-				s = new SimilarFiles(Rel.ImNewer, r.subj);
-			} else { // i'm yellow (have exact copies)
-				s = new SimilarFiles(Rel.Same, r.subj);
-				s.same.addMany(r.same.names);
-			}
-			s.older.addMany(r.older.names);
-			simf[r.subj.fullName] = s;
-			addOlder(r.older, r.subj.fullName, simf);
-
-			fname2file.addToCache(r.same);
-			fname2file.addToCache(r.older);
-			fname2file.addToCache([r.subj]);
-		}
+		auto dres = gatherResults!(SimilarDirs, int, ResultItem!DirInfo)(reslist);
+		auto fres = gatherResults!(SimilarFiles, string, ResultItem!PFileInfo)(freslist);
 		version (verbose) writeln("complete, sending MsgSearchComplete");
-		gui_tid.send(MsgSearchComplete(cast(shared)sim, cast(shared)simf,  cast(shared)id2dir, cast(shared)fname2file));
+		gui_tid.send(MsgSearchComplete(cast(shared)dres[0], cast(shared)fres[0],  cast(shared)dres[1], cast(shared)fres[1]));
 	} catch(Cancelled c) {
 		version (verbose) writeln("cancelled");
 		gui_tid.send(MsgCancel());
@@ -545,4 +509,28 @@ void searchDups(shared(DirInfo[]) _dirs, Tid gui_tid)
 		version (verbose) writeln("mbox full");
 	}
 	version (verbose) writeln("search thread finishes");
+}
+
+Tuple!(Sim[Key], IFSObject[Key]) gatherResults(Sim, Key, ResItem)(ResItem[] reslist)
+{
+	Sim[Key] sim;
+	IFSObject[Key] id2ifs;
+	foreach(r; reslist) {
+		r.calcProfit();
+		Sim s;
+		if (r.same.length==0) { //i'm green (newest)
+			s = new Sim(Rel.ImNewer, r.subj);
+		} else { // i'm yellow (have exact copies)
+			s = new Sim(Rel.Same, r.subj);
+			s.same.addMany(r.same.keys);
+		}
+		s.older.addMany(r.older.keys);
+		sim[r.subj.key] = s;
+		addOlder(r.older, r.subj.key, sim);
+
+		id2ifs.addToCache(r.same);
+		id2ifs.addToCache(r.older);
+		id2ifs.addToCache([r.subj]);
+	}
+	return tuple(sim, id2ifs);
 }

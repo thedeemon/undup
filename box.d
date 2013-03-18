@@ -210,23 +210,6 @@ struct Set(T)
 	auto elems() { return data.byKey(); }
 }
 
-class Similar(C)
-{
-	Rel status;
-	IFSObject subj;
-	C newer, same, older;
-
-	this(Rel stat, IFSObject subject) { status = stat; subj = subject; }
-
-	Similar!D fmap(D)(D delegate(C) f)
-	{
-		auto s = new Similar!D(status, subj);
-		s.newer = f(newer);
-		s.same = f(same);
-		s.older = f(older);
-		return s;
-	}
-}
 
 alias SimilarDirs = Similar!(Set!int);
 alias SimilarBoxes = Similar!(Tuple!(Box[], IFSObject[]));
