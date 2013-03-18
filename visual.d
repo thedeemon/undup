@@ -1,6 +1,7 @@
 module visual;
-import dfl.all, fileops, messages, box, details, legend, std.range, std.algorithm, std.stdio, std.math, std.conv,
-	std.c.windows.windows, dfl.internal.winapi, std.string, rel, std.concurrency, std.typecons, core.time;
+import dfl.all, rel, fileops, messages, box, details, legend, std.range, std.algorithm, std.stdio, 
+	std.math, std.conv,	std.c.windows.windows, dfl.internal.winapi, std.string, std.concurrency, 
+	std.typecons, core.time, core.memory;
 
 class MyPictureBox : PictureBox {
 	this() 
@@ -58,6 +59,7 @@ class Visual : dfl.form.Form
 	Box lastHoveredBox;
 	Timer timer; // for receiving messages
 	Font font;
+	int errors;
 
 	this(DirInfo[] _dirs, string[] names) {
 		W = 1040; H = 670;
@@ -65,6 +67,7 @@ class Visual : dfl.form.Form
 		version (verbose) writeln("making box tree");
 		top = dirs.filter!(di => di.parent is null).map!(boxOfDir).array;
 		coloring = new Coloring();
+		errors = 0;
 		initializeVisual(names);
 	}
 
@@ -215,7 +218,6 @@ class Visual : dfl.form.Form
 		SetBitmapBits(hbm, data.length*4, data.ptr);
 		delete data;		
 		
-		//if (picBox.image !is null) delete picBox.image;
 		picBox.image = new Bitmap(hbm, true);
 		picBox.size = Size(w,h);
 	}
@@ -224,7 +226,6 @@ class Visual : dfl.form.Form
 	{
 		if (ma.x < W && ma.y < H) {
 			Box box = boxPixMap[ma.y * W + ma.x];
-			//auto bxs = top.map!(b => b.findByPoint(ma.x, ma.y, null, resParent)).find!"a !is null";
 			if (box !is null && box !is lastHoveredBox) {
 				lastHoveredBox = box;
 				Box resParent = box.parent;
@@ -297,7 +298,6 @@ class Visual : dfl.form.Form
 
 	void OnTimer(Timer sender, EventArgs ea)
 	{
-		//writeln("onTimer this=", cast(void*)this);
 		msgAnalyzing.nullify();
 
 		bool again = false, terminated = false;
@@ -311,12 +311,17 @@ class Visual : dfl.form.Form
 		} while(again);
 
 		if (terminated) {	
+			msgAnalyzing.nullify();
+			if (!cancelSearch && !complete) {
+				lblStatus.text = "Error occured in analyzing thread.";
+				errors++;
+				if (errors < 3) {
+					return StartSearch(null, null);					
+				}
+			}
 			btnSearch.visible = true;
 			btnCancel.visible = false;
 			progressBar.value = 0;
-			msgAnalyzing.nullify();
-			if (!cancelSearch && !complete)
-				lblStatus.text = "Error occured in analyzing thread.";
 		} else
 		if (!msgAnalyzing.isNull) {
 			lblStatus.text = format("analyzing %s [%s]", msgAnalyzing.name, msgAnalyzing.sz);
@@ -363,6 +368,7 @@ class Visual : dfl.form.Form
 		progressBar.value = 0;
 		lblStatus.text = "search cancelled";
 		msgAnalyzing.nullify();
+		GC.collect(); GC.minimize();
 	}
 
 	Nullable!MsgAnalyzing msgAnalyzing;
@@ -410,7 +416,7 @@ class Visual : dfl.form.Form
 		lblFile.bounds = Rect(0, H, W-40, 24);
 		btnHelp.bounds = Rect(W-32, H+4, 24, 24);
 		clientSize = dfl.all.Size(W, H + 36);
-		
+		GC.collect(); GC.minimize();
 		version (verbose) writeln("RcvMsgSearchComplete ok");
 	}
 
@@ -425,6 +431,8 @@ auto keys(T)(T[] arr) { return arr.map!(key); }
 
 shared bool cancelSearch;
 
+template ResItem(T) { alias ResItem = Similar!(T[], T); }
+
 void searchDups(shared(DirInfo[]) _dirs, Tid gui_tid)
 {
 	DirInfo[] dirs = cast(DirInfo[]) _dirs;
@@ -432,7 +440,7 @@ void searchDups(shared(DirInfo[]) _dirs, Tid gui_tid)
 	try {
 		//dirs
 		auto rc = new RelCache();
-		Similar!(DirInfo[], DirInfo)[] reslist;
+		ResItem!DirInfo[] reslist;
 
 		Rel comp(DirInfo a, DirInfo b) { return compDirsCaching(a, b, rc); }
 		void ancd(DirInfo[] ds, float prg) 
@@ -453,7 +461,7 @@ void searchDups(shared(DirInfo[]) _dirs, Tid gui_tid)
 		PFileInfo[] bigfiles = dirs.map!(
 										 di => di.files.filter!(fi => fi.size > 50_000_000L).map!(fi => new PFileInfo(fi, di))									 
 										 ).joiner.array;
-		Similar!(PFileInfo[], PFileInfo)[] freslist;
+		ResItem!PFileInfo[] freslist;
 
 		Rel compf(PFileInfo a, PFileInfo b) { return relate(a,b,rc); }
 		void ancf(PFileInfo[] fs, float prg) 
@@ -466,8 +474,8 @@ void searchDups(shared(DirInfo[]) _dirs, Tid gui_tid)
 			cluster!(PFileInfo)(bigfiles, &ancf);
 
 		//gather results
-		auto dres = gatherResults!(SimilarDirs, int, Similar!(DirInfo[], DirInfo))(reslist);
-		auto fres = gatherResults!(SimilarFiles, string, Similar!(PFileInfo[], PFileInfo))(freslist);
+		auto dres = gatherResults!(SimilarDirs, int, ResItem!DirInfo)(reslist);
+		auto fres = gatherResults!(SimilarFiles, string, ResItem!PFileInfo)(freslist);
 		version (verbose) writeln("complete, sending MsgSearchComplete");
 		gui_tid.send(MsgSearchComplete(cast(shared)dres[0], cast(shared)fres[0],  cast(shared)dres[1], cast(shared)fres[1]));
 	} catch(Cancelled c) {
@@ -482,23 +490,22 @@ Tuple!(Sim[Key], IFSObject[Key]) gatherResults(Sim, Key, ResItem)(ResItem[] resl
 	Sim[Key] sim;
 	IFSObject[Key] id2ifs;
 	foreach(r; reslist) {
-		Sim s = r.fmap!(Set!Key, IFSObject)(xs => mkSet!(Key, typeof(xs.keys))(xs.keys));
-		sim[r.subj.key] = s;
+		sim[r.subj.key] = r.fmap!(Set!Key, IFSObject)(xs => mkSet!(Key, typeof(xs.keys))(xs.keys));
 		addOlder(r.older, r.subj.key, sim);
-		foreach(x; joiner([r.same, r.older, [r.subj]]))
+		foreach(x; chain(r.same, r.older, [r.subj]))
 			id2ifs[x.key] = x;
 	}
 	return tuple(sim, id2ifs);
 }
 
-void addOlder(R,I,S)(R old_ones, I myid, ref S[I] sim)
+void addOlder(R,Key,Sim)(R old_ones, Key myid, ref Sim[Key] sim)
 {
 	foreach(x; old_ones) {
 		auto id = key(x);
 		if (id in sim) 
 			sim[id].newer.add(myid);
 		else {
-			auto os = new S(Rel.ImOlder, x);
+			auto os = new Sim(Rel.ImOlder, x);
 			os.newer.add(myid);
 			sim[id] = os;
 		}
