@@ -213,13 +213,14 @@ struct Set(T)
 class Similar(C)
 {
 	Rel status;
+	IFSObject subj;
 	C newer, same, older;
 
-	this(Rel stat) { status = stat; }
+	this(Rel stat, IFSObject subject) { status = stat; subj = subject; }
 
 	Similar!D fmap(D)(D delegate(C) f)
 	{
-		auto s = new Similar!D(status);
+		auto s = new Similar!D(status, subj);
 		s.newer = f(newer);
 		s.same = f(same);
 		s.older = f(older);

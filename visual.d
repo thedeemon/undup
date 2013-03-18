@@ -241,7 +241,7 @@ class Visual : dfl.form.Form
 	void OnDblClick(Control,EventArgs)
 	{
 		if (curSimBoxes is null) return;
-		auto frm = new Details(curSimBoxes, lastHoveredBox);
+		auto frm = new Details(curSimBoxes);
 		frm.showDialog(this);
 	}
 
@@ -419,13 +419,17 @@ class Visual : dfl.form.Form
 auto ids(DirInfo[] arr) { return arr.map!(di => di.ID); }
 auto names(PFileInfo[] arr) { return arr.map!(fi => fi.fullName()); }
 
-void addOlder(R,I,S)(R old_ids, I myid, ref S[I] sim)
+int    key(DirInfo   di) { return di.ID; }
+string key(PFileInfo fi) { return fi.fullName(); }
+
+void addOlder(R,I,S)(R old_ones, I myid, ref S[I] sim)
 {
-	foreach(id; old_ids) {
+	foreach(x; old_ones) {
+		auto id = key(x);
 		if (id in sim) {
 			sim[id].newer.add(myid);
 		} else {
-			auto os = new S(Rel.ImOlder);
+			auto os = new S(Rel.ImOlder, x);
 			os.newer.add(myid);
 			sim[id] = os;
 		}
@@ -451,29 +455,30 @@ void searchDups(shared(DirInfo[]) _dirs, Tid gui_tid)
 	DirInfo[] dirs = cast(DirInfo[]) _dirs;
 	version (verbose) writeln("searchDups ", dirs.length);
 
-	gui_tid.send(MsgAnalyzing("test", 123, 0.175));
-
-	auto rc = new RelCache();
-	ResultItem!DirInfo[] reslist = [];
-
-	Rel comp(DirInfo a, DirInfo b) { return compDirsCaching(a, b, rc); }
-	void ancd(DirInfo[] ds, float prg) 
-	{
-		if (cancelSearch) throw new Cancelled();
-		gui_tid.send(MsgAnalyzing(ds[0].name, ds.length, prg * 0.75));
-		analyseCluster!(DirInfo, false)(ds, &comp, reslist);
-	}
 	version (verbose) writeln("10");
 	try {
+		//dirs
+		auto rc = new RelCache();
+		ResultItem!DirInfo[] reslist = [];
+
+		Rel comp(DirInfo a, DirInfo b) { return compDirsCaching(a, b, rc); }
+		void ancd(DirInfo[] ds, float prg) 
+		{
+			if (cancelSearch) throw new Cancelled();
+			gui_tid.send(MsgAnalyzing(ds[0].name, ds.length, prg * 0.75));
+			analyseCluster!(DirInfo, false)(ds, &comp, reslist);
+		}
+
 		if (dirs.length > 0)
 			cluster!(DirInfo)(dirs, &ancd);
 		version (verbose) writeln("20");
 
 		bool[int] reported;
-		foreach(r; reslist) reported[r.dir.ID] = true;
+		foreach(r; reslist) reported[r.subj.ID] = true;
 		version (verbose) writeln("22");
-		reslist = reslist.filter!(r => r.dir.parent !is null ? (r.dir.parent.ID !in reported) : true).array;
+		reslist = reslist.filter!(r => r.subj.parent !is null ? (r.subj.parent.ID !in reported) : true).array;
 
+		//big files
 		PFileInfo[] bigfiles = dirs.map!(
 										 di => di.files.filter!(fi => fi.size > 50_000_000L).map!(fi => new PFileInfo(fi, di))									 
 										 ).joiner.array;
@@ -491,24 +496,25 @@ void searchDups(shared(DirInfo[]) _dirs, Tid gui_tid)
 			cluster!(PFileInfo)(bigfiles, &ancf);
 		version (verbose) writeln("40");
 
+		//gather results
 		SimilarDirs[int] sim;
 		IFSObject[int] id2dir;
 		foreach(r; reslist) {
 			r.calcProfit();
 			SimilarDirs s;
 			if (r.same.length==0) { //i'm green (newest)
-				s = new SimilarDirs(Rel.ImNewer);
+				s = new SimilarDirs(Rel.ImNewer, r.subj);
 			} else { // i'm yellow (have exact copies)
-				s = new SimilarDirs(Rel.Same);
+				s = new SimilarDirs(Rel.Same, r.subj);
 				s.same.addMany(r.same.ids);
 			}
 			s.older.addMany(r.older.ids);
-			sim[r.dir.ID] = s;
-			addOlder(r.older.ids, r.dir.ID, sim);
+			sim[r.subj.ID] = s;
+			addOlder(r.older, r.subj.ID, sim);
 
 			id2dir.addToCache(r.same);
 			id2dir.addToCache(r.older);
-			id2dir.addToCache([r.dir]);
+			id2dir.addToCache([r.subj]);
 		}
 
 		SimilarFiles[string] simf;
@@ -517,18 +523,18 @@ void searchDups(shared(DirInfo[]) _dirs, Tid gui_tid)
 			r.calcProfit();
 			SimilarFiles s;
 			if (r.same.length==0) { //i'm green (newest)
-				s = new SimilarFiles(Rel.ImNewer);
+				s = new SimilarFiles(Rel.ImNewer, r.subj);
 			} else { // i'm yellow (have exact copies)
-				s = new SimilarFiles(Rel.Same);
+				s = new SimilarFiles(Rel.Same, r.subj);
 				s.same.addMany(r.same.names);
 			}
 			s.older.addMany(r.older.names);
-			simf[r.dir.fullName] = s;
-			addOlder(r.older.names, r.dir.fullName, simf);
+			simf[r.subj.fullName] = s;
+			addOlder(r.older, r.subj.fullName, simf);
 
 			fname2file.addToCache(r.same);
 			fname2file.addToCache(r.older);
-			fname2file.addToCache([r.dir]);
+			fname2file.addToCache([r.subj]);
 		}
 		version (verbose) writeln("complete, sending MsgSearchComplete");
 		gui_tid.send(MsgSearchComplete(cast(shared)sim, cast(shared)simf,  cast(shared)id2dir, cast(shared)fname2file));

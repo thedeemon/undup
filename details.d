@@ -19,12 +19,12 @@ class Details: dfl.form.Form
 	dfl.listview.ListView lvOlder;
 	Resizer resizer;
 
-	this(SimilarBoxes sbx, Box subj)
+	this(SimilarBoxes sbx)
 	{
 		text = "Details";
 		clientSize = dfl.all.Size(696, 506);
 		int y = 8;
-		y = addList([subj.item],     y, label1, lvSubject, "Subject:", 64);
+		y = addList([sbx.subj],     y, label1, lvSubject, "Subject:", 64);
 		y = addList(sbx.newer[1],  y, label2, lvNewer, "These objects are newer:");
 		y = addList(sbx.same[1],   y, label3, lvSame, "These objects are same:");
 		y = addList(sbx.older[1],  y, label4, lvOlder, "These objects are older:");

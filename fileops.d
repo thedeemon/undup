@@ -458,20 +458,20 @@ Rel compDirsCaching(in DirInfo left, in DirInfo right, RelCache rc)
 long sum(R)(R data) { return reduce!"a+b"(0L, data); }
 
 class ResultItem(T) {
-	T dir;
+	T subj;
 	T[] same;
 	T[] older;
 	long profit;
 
-	this(T _dir, T[] _same, T[] _older)
+	this(T _subj, T[] _same, T[] _older)
 	{
-		dir = _dir; same = _same; older = _older;
+		subj = _subj; same = _same; older = _older;
 		profit = -1;
 	}
 
 	void calcProfit()
 	{
-		long sumsz(T[] arr) { return arr.map!(di => di.getSize()).sum; }
+		long sumsz(T[] arr) { return arr.map!(x => x.getSize()).sum; }
 		profit = sumsz(same) + sumsz(older);
 	}
 }
