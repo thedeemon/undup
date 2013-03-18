@@ -468,11 +468,12 @@ class Similar(C,S)
 	}
 	this(S _subj, C _same, C _older)	{
 		subj = _subj; same = _same; older = _older;
+		status = same.length == 0 ? Rel.ImNewer : Rel.Same;
 	}
 
-	Similar!(D,S) fmap(D)(D delegate(C) f)
+	Similar!(D,S2) fmap(D,S2)(D delegate(C) f)
 	{
-		auto s = new Similar!(D,S)(status, subj);
+		auto s = new Similar!(D,S2)(status, subj);
 		s.newer = f(newer);
 		s.same = f(same);
 		s.older = f(older);

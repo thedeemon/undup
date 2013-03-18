@@ -423,20 +423,6 @@ int    key(DirInfo   di) { return di.ID; }
 string key(PFileInfo fi) { return fi.fullName(); }
 auto keys(T)(T[] arr) { return arr.map!(key); }
 
-void addOlder(R,I,S)(R old_ones, I myid, ref S[I] sim)
-{
-	foreach(x; old_ones) {
-		auto id = key(x);
-		if (id in sim) 
-			sim[id].newer.add(myid);
-		else {
-			auto os = new S(Rel.ImOlder, x);
-			os.newer.add(myid);
-			sim[id] = os;
-		}
-	}
-}
-
 shared bool cancelSearch;
 
 void searchDups(shared(DirInfo[]) _dirs, Tid gui_tid)
@@ -496,14 +482,25 @@ Tuple!(Sim[Key], IFSObject[Key]) gatherResults(Sim, Key, ResItem)(ResItem[] resl
 	Sim[Key] sim;
 	IFSObject[Key] id2ifs;
 	foreach(r; reslist) {
-		Rel rel = r.same.length==0 ? Rel.ImNewer : Rel.Same;
-		Sim s = new Sim(rel, r.subj);
-		s.same.addMany(r.same.keys);
-		s.older.addMany(r.older.keys);
+		Sim s = r.fmap!(Set!Key, IFSObject)(xs => mkSet!(Key, typeof(xs.keys))(xs.keys));
 		sim[r.subj.key] = s;
 		addOlder(r.older, r.subj.key, sim);
 		foreach(x; joiner([r.same, r.older, [r.subj]]))
 			id2ifs[x.key] = x;
 	}
 	return tuple(sim, id2ifs);
+}
+
+void addOlder(R,I,S)(R old_ones, I myid, ref S[I] sim)
+{
+	foreach(x; old_ones) {
+		auto id = key(x);
+		if (id in sim) 
+			sim[id].newer.add(myid);
+		else {
+			auto os = new S(Rel.ImOlder, x);
+			os.newer.add(myid);
+			sim[id] = os;
+		}
+	}
 }

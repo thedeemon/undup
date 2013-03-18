@@ -208,6 +208,14 @@ struct Set(T)
 	void add(T x) { data[x] = true; }
 	void addMany(R)(R rng) { foreach(x; rng) data[x] = true; }
 	auto elems() { return data.byKey(); }
+	@property int length() { return data.length; }
+}
+
+Set!T mkSet(T, R)(R xs)
+{
+	Set!T s;
+	s.addMany(xs);
+	return s;
 }
 
 alias SimilarDirs = Similar!(Set!int, IFSObject);
@@ -221,5 +229,5 @@ SimilarBoxes simBoxesOfSets(T)(Similar!(Set!T, IFSObject) s, Box[T] boxIndex, IF
 		auto ifs   = set.data.keys.map!(id => t2ifs.get(id,null)).array;
 		return tuple(boxes, ifs);
 	}
-	return s.fmap!(Tuple!(Box[], IFSObject[]))(&f);
+	return s.fmap!(Tuple!(Box[], IFSObject[]), IFSObject)(&f);
 }
