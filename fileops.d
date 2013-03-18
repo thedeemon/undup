@@ -457,36 +457,22 @@ Rel compDirsCaching(in DirInfo left, in DirInfo right, RelCache rc)
 
 long sum(R)(R data) { return reduce!"a+b"(0L, data); }
 
-class ResultItem(T) {
-	T subj;
-	T[] same;
-	T[] older;
-	long profit;
-
-	this(T _subj, T[] _same, T[] _older)
-	{
-		subj = _subj; same = _same; older = _older;
-		profit = -1;
-	}
-
-	void calcProfit()
-	{
-		long sumsz(T[] arr) { return arr.map!(x => x.getSize()).sum; }
-		profit = sumsz(same) + sumsz(older);
-	}
-}
-
-class Similar(C)
+class Similar(C,S)
 {
 	Rel status;
-	IFSObject subj;
+	S subj;
 	C newer, same, older;
 
-	this(Rel stat, IFSObject subject) { status = stat; subj = subject; }
+	this(Rel stat, S subject) 	{ 
+		status = stat; subj = subject; 
+	}
+	this(S _subj, C _same, C _older)	{
+		subj = _subj; same = _same; older = _older;
+	}
 
-	Similar!D fmap(D)(D delegate(C) f)
+	Similar!(D,S) fmap(D)(D delegate(C) f)
 	{
-		auto s = new Similar!D(status, subj);
+		auto s = new Similar!(D,S)(status, subj);
 		s.newer = f(newer);
 		s.same = f(same);
 		s.older = f(older);
@@ -494,7 +480,7 @@ class Similar(C)
 	}
 }
 
-void analyseCluster(T, bool talk)(T[] ds, Rel delegate(T,T) comp, ref ResultItem!T[] reslist)
+void analyseCluster(T, bool talk)(T[] ds, Rel delegate(T,T) comp, ref Similar!(T[],T)[] reslist)
 in 
 {
 	assert(ds.length > 1);
@@ -520,7 +506,7 @@ body
 		auto select(Rel r) { return iota(0,n).filter!(k => k != z && row[k] == r).map!(k => ds[k]).filter!(d => d.getSize > 0).array; } 
 		auto same = select(Rel.Same), older = select(Rel.ImNewer);
 		if (same.length > 0 || older.length > 0) 
-			reslist ~= new ResultItem!T(ds[z], same, older);
+			reslist ~= new Similar!(T[],T)(ds[z], same, older);
 	}
 }
 

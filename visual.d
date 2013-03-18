@@ -427,9 +427,9 @@ void addOlder(R,I,S)(R old_ones, I myid, ref S[I] sim)
 {
 	foreach(x; old_ones) {
 		auto id = key(x);
-		if (id in sim) {
+		if (id in sim) 
 			sim[id].newer.add(myid);
-		} else {
+		else {
 			auto os = new S(Rel.ImOlder, x);
 			os.newer.add(myid);
 			sim[id] = os;
@@ -439,28 +439,14 @@ void addOlder(R,I,S)(R old_ones, I myid, ref S[I] sim)
 
 shared bool cancelSearch;
 
-void addToCache(ref IFSObject[int] id2dir, DirInfo[] dirs)
-{
-	foreach(di; dirs)
-		id2dir[di.ID] = di;
-}
-
-void addToCache(ref IFSObject[string] fname2file, PFileInfo[] files)
-{
-	foreach(fi; files)
-		fname2file[fi.fullName] = fi;
-}
-
 void searchDups(shared(DirInfo[]) _dirs, Tid gui_tid)
 {
 	DirInfo[] dirs = cast(DirInfo[]) _dirs;
 	version (verbose) writeln("searchDups ", dirs.length);
-
-	version (verbose) writeln("10");
 	try {
 		//dirs
 		auto rc = new RelCache();
-		ResultItem!DirInfo[] reslist = [];
+		Similar!(DirInfo[], DirInfo)[] reslist;
 
 		Rel comp(DirInfo a, DirInfo b) { return compDirsCaching(a, b, rc); }
 		void ancd(DirInfo[] ds, float prg) 
@@ -472,18 +458,16 @@ void searchDups(shared(DirInfo[]) _dirs, Tid gui_tid)
 
 		if (dirs.length > 0)
 			cluster!(DirInfo)(dirs, &ancd);
-		version (verbose) writeln("20");
 
 		bool[int] reported;
 		foreach(r; reslist) reported[r.subj.ID] = true;
-		version (verbose) writeln("22");
 		reslist = reslist.filter!(r => r.subj.parent !is null ? (r.subj.parent.ID !in reported) : true).array;
 
 		//big files
 		PFileInfo[] bigfiles = dirs.map!(
 										 di => di.files.filter!(fi => fi.size > 50_000_000L).map!(fi => new PFileInfo(fi, di))									 
 										 ).joiner.array;
-		ResultItem!PFileInfo[] freslist = [];
+		Similar!(PFileInfo[], PFileInfo)[] freslist;
 
 		Rel compf(PFileInfo a, PFileInfo b) { return relate(a,b,rc); }
 		void ancf(PFileInfo[] fs, float prg) 
@@ -492,22 +476,18 @@ void searchDups(shared(DirInfo[]) _dirs, Tid gui_tid)
 			send(gui_tid, MsgAnalyzing(fs[0].name, fs.length, 0.75 + prg * 0.25));
 			analyseCluster!(PFileInfo, false)(fs, &compf, freslist); 
 		}
-		version (verbose) writeln("30");
 		if (bigfiles.length > 0)
 			cluster!(PFileInfo)(bigfiles, &ancf);
-		version (verbose) writeln("40");
 
 		//gather results
-		auto dres = gatherResults!(SimilarDirs, int, ResultItem!DirInfo)(reslist);
-		auto fres = gatherResults!(SimilarFiles, string, ResultItem!PFileInfo)(freslist);
+		auto dres = gatherResults!(SimilarDirs, int, Similar!(DirInfo[], DirInfo))(reslist);
+		auto fres = gatherResults!(SimilarFiles, string, Similar!(PFileInfo[], PFileInfo))(freslist);
 		version (verbose) writeln("complete, sending MsgSearchComplete");
 		gui_tid.send(MsgSearchComplete(cast(shared)dres[0], cast(shared)fres[0],  cast(shared)dres[1], cast(shared)fres[1]));
 	} catch(Cancelled c) {
 		version (verbose) writeln("cancelled");
 		gui_tid.send(MsgCancel());
-	} catch(MailboxFull mf) {
-		version (verbose) writeln("mbox full");
-	}
+	} 
 	version (verbose) writeln("search thread finishes");
 }
 
@@ -516,21 +496,14 @@ Tuple!(Sim[Key], IFSObject[Key]) gatherResults(Sim, Key, ResItem)(ResItem[] resl
 	Sim[Key] sim;
 	IFSObject[Key] id2ifs;
 	foreach(r; reslist) {
-		r.calcProfit();
-		Sim s;
-		if (r.same.length==0) { //i'm green (newest)
-			s = new Sim(Rel.ImNewer, r.subj);
-		} else { // i'm yellow (have exact copies)
-			s = new Sim(Rel.Same, r.subj);
-			s.same.addMany(r.same.keys);
-		}
+		Rel rel = r.same.length==0 ? Rel.ImNewer : Rel.Same;
+		Sim s = new Sim(rel, r.subj);
+		s.same.addMany(r.same.keys);
 		s.older.addMany(r.older.keys);
 		sim[r.subj.key] = s;
 		addOlder(r.older, r.subj.key, sim);
-
-		id2ifs.addToCache(r.same);
-		id2ifs.addToCache(r.older);
-		id2ifs.addToCache([r.subj]);
+		foreach(x; joiner([r.same, r.older, [r.subj]]))
+			id2ifs[x.key] = x;
 	}
 	return tuple(sim, id2ifs);
 }

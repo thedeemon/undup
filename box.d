@@ -210,12 +210,11 @@ struct Set(T)
 	auto elems() { return data.byKey(); }
 }
 
+alias SimilarDirs = Similar!(Set!int, IFSObject);
+alias SimilarBoxes = Similar!(Tuple!(Box[], IFSObject[]), IFSObject);
+alias SimilarFiles = Similar!(Set!string, IFSObject);
 
-alias SimilarDirs = Similar!(Set!int);
-alias SimilarBoxes = Similar!(Tuple!(Box[], IFSObject[]));
-alias SimilarFiles = Similar!(Set!string);
-
-SimilarBoxes simBoxesOfSets(T)(Similar!(Set!T) s, Box[T] boxIndex, IFSObject[T] t2ifs)
+SimilarBoxes simBoxesOfSets(T)(Similar!(Set!T, IFSObject) s, Box[T] boxIndex, IFSObject[T] t2ifs)
 {
 	auto f(Set!T set) {
 		auto boxes = set.data.keys.map!(id => boxIndex.get(id,null)).filter!(p => p !is null).array;
