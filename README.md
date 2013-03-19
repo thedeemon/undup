@@ -41,6 +41,7 @@ When comparing two objects (files or directories) there are 4 possible outcomes:
 Two files of same name considered equal if they have the same size and same modification time (rounded up to 2 seconds). File contents are not being compared, just metadata: name, modification time and size. If two files of same name and same modification time have different sizes they are considered different (outcome 4). Files with same name and different modification times are related by time: one is considered a newer version of the other.
 
 When comparing two directories following rules applied:
+
 If they have same number of objects (files & folders), and for each object in one folder there is an equal copy of it in another folder, then two folders are considered equal.
 
 If all objects of one non empty folder have equal or newer versions in the second folder, then the second folder is considered a newer version of the first one.
@@ -52,7 +53,7 @@ If two folders contain files considered different (same name & time but differen
 Directories and big files are grouped by name similarity, and comparison is performed between all objects inside each group. A few objects form a group if one of them has a name which serves as a prefix for names of all the others. E.g. "cats", "cat01", "cat", "cat2" and "cats3" will get into one group but "more cats" will not land into this group.
 
 ### Technical details
-Written in D language. Built using DMD 2.062. Uses DFL for GUI, take it from https://github.com/Rayerd/dfl (only needed for compiling, the binary blogsort.exe does not need any additional dlls). 
+Written in D language. Built using DMD 2.062. Uses DFL for GUI, take it from https://github.com/Rayerd/dfl (only needed for compiling, the binary does not need any additional dlls). 
 
 DFL (C) 2004-2010 Christopher E. Miller
 
