@@ -312,10 +312,12 @@ class Visual : dfl.form.Form
 
 		if (terminated) {	
 			msgAnalyzing.nullify();
+			version(verbose) writeln("terminated, cancelSearch=", cancelSearch, " complete=", complete);
 			if (!cancelSearch && !complete) {
 				lblStatus.text = "Error occured in analyzing thread.";
 				errors++;
 				if (errors < 3) {
+					version(verbose) writeln("errors=", errors, ", retrying");
 					return StartSearch(null, null);					
 				}
 			}
@@ -357,6 +359,7 @@ class Visual : dfl.form.Form
 	void CancelSearch(Control, EventArgs)
 	{
 		cancelSearch = true;
+		btnCancel.visible = false;
 		lblStatus.text = "cancelling";
 	}
 

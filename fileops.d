@@ -45,12 +45,11 @@ void loadArray(T)(ref T[] arr, MemoryStream st)
 	st.read(n);
 	assert(n >= 0 && n < 1000000);
 	static if (isBasicType!T) {
-		ubyte[] a = [];
+		ubyte[] a;
 		a.length = n * T.sizeof;
 		st.read(a);
 		arr = cast(T[]) a;
 	} else {
-		if (arr is null) arr = [];
 		arr.length = n;
 		foreach(ref x; arr) {
 			static if (is(T==class)) x = new T;
@@ -298,7 +297,7 @@ bool readHeader(string fname, ref DumpHeader hdr)
 
 DirInfo0[] readDump(string fname)
 {
-	DirInfo0[] a = [];
+	DirInfo0[] a;
 	auto bytes = cast(ubyte[]) std.file.read(fname);
 	auto ms = new MemoryStream(bytes);
 	DumpSignature sgn;
@@ -312,6 +311,7 @@ DirInfo0[] readDump(string fname)
 		load(di, ms);
 		a ~= di;
 	}
+	delete ms;	delete bytes;
 	return a;
 }
 
@@ -342,7 +342,7 @@ DirInfo0[] joinDumps(string[] fnames)
 
 D[] makeIndex(D)(D[] ds)
 {
-	D[] idx = [];
+	D[] idx;
 	int maxid = getMaxID(ds);
 	idx.length = maxid + 1;
 	foreach(di; ds) { 
@@ -355,7 +355,7 @@ D[] makeIndex(D)(D[] ds)
 DirInfo[] useIndex(DirInfo0[] ds)
 {
 	DirInfo[] dirs =  ds.map!(di => new DirInfo(di.ID,  null, di.name, null, di.files)).array;
-	DirInfo[] idx = makeIndex(dirs);
+	scope DirInfo[] idx = makeIndex(dirs);
 	foreach(i; 0..dirs.length) {
 		dirs[i].parent = ds[i].parentID >= 0 ? idx[ds[i].parentID] : null;
 		dirs[i].subdirs = ds[i].subdirs.map!(k => idx[k]).filter!(p => p !is null).array;

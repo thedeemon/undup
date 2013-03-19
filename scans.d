@@ -1,6 +1,6 @@
 module scans;
 import dfl.all, newscan, fileops, visual, resizer, about, std.file, std.stdio, std.conv, 
-	std.datetime, std.algorithm, std.range, std.array, std.string;
+	std.datetime, std.range, std.array, std.string, core.memory, std.algorithm : map, joiner;
 
 class Scans: dfl.form.Form
 {
@@ -14,13 +14,47 @@ class Scans: dfl.form.Form
 	dfl.label.Label label1;
 	//~Entice Designer variables end here.
 	Resizer resizer;
-	
-	this()
+	string restartString;
+
+
+	this(string args)
 	{
 		initializeScans();		
-		//@  Other Scans initialization code here.		
+		int[] indices = parseVals(args, "sel=");
+		int[] bnds = parseVals(args, "bounds=");
+
+		if (indices.length > 0 || bnds.length > 0) {
+			Timer tm = new Timer;
+			tm.interval = 20;
+			tm.tick ~= (Timer t, EventArgs ea) {
+				t.stop();
+
+				if (bnds.length==4) 
+					this.bounds = Rect(bnds[0], bnds[1], bnds[2], bnds[3]);				
+
+				auto n = lvScans.items.length;
+				foreach(idx; indices)
+					if (idx < n)
+						lvScans.items[idx].selected = true;
+				version(verbose) writeln("Indices: ", indices, " n=", n);
+				invalidate();
+			};
+			tm.start();
+		}
 	}
 	
+	int[] parseVals(string args, string capt)
+	{
+		if (args.length > 0) {
+			auto i = args.indexOf(capt);			
+			if (i >= 0) {
+				auto j = args[i..$].indexOf(';');
+				if (j >= 0) 
+					return args[i + capt.length .. i + j].split(",").map!(to!int).array;			
+			}
+		}
+		return null;
+	}
 	
 	private void initializeScans()
 	{
@@ -67,7 +101,7 @@ class Scans: dfl.form.Form
 		//~DFL dfl.label.Label=label1
 		label1 = new dfl.label.Label();
 		label1.name = "label1";
-		label1.text = "Scan one or more drives with 'New scan', then select the ones you want to see and compare using Ctrl-Click and press 'Show'. ";
+		label1.text = "Scan one or more drives with 'New scan', then select the ones you want to see and compare and press 'Show'.";
 		label1.bounds = dfl.all.Rect(8, 568, 768, 48);
 		label1.parent = this;
 		//~Entice Designer 0.8.5.02 code ends here.
@@ -123,7 +157,9 @@ class Scans: dfl.form.Form
 			DumpHeader hdr;
 			if (readHeader(fname, hdr)) {
 				auto tm = (cast(DateTime) SysTime(hdr.time)).toSimpleString();
-				auto item = lvScans.addRow([hdr.name, hdr.path, hdr.volume, hdr.volumeSize.to!string ~ " GB", tm]);
+				auto strings = [hdr.name, hdr.path, hdr.volume, hdr.volumeSize.to!string ~ " GB", tm];
+				auto vals = strings.map!(s => s.length == 0 ? " " : s).array;
+				auto item = lvScans.addRow(vals);
 				item.tag = new Str(fname);
 			}
 		}
@@ -135,6 +171,12 @@ class Scans: dfl.form.Form
 		if (sel.length < 1) return;
 		auto fnames = iota(0, sel.length).map!(i => (cast(Str) sel[i].tag).s).array;
 		Show(fnames);
+		auto sind = lvScans.selectedIndices;
+		string indices = iota(0, sel.length).map!(i => sind[i].to!string).joiner(",").array.to!string;
+		Rect bnd = this.bounds;
+		string bnds = format("bounds=%s,%s,%s,%s;", bnd.x, bnd.y, bnd.width, bnd.height);
+		restartString = "sel=" ~ indices ~ ";" ~ bnds;
+		close();
 	}
 
 	void OnRemove(Control, EventArgs)
