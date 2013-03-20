@@ -153,6 +153,8 @@ class Scans: dfl.form.Form
 	void FillTable()
 	{
 		auto mydir = GetMyDir();
+		if (!exists(mydir))
+			mkdir(mydir);
 		foreach(string fname; dirEntries(mydir, "*.dmp", SpanMode.shallow)) {
 			DumpHeader hdr;
 			if (readHeader(fname, hdr)) {
