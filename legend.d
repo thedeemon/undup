@@ -40,6 +40,7 @@ class Legend: dfl.form.Form
 		btnClose.parent = this;
 		//~Entice Designer 0.8.5.02 code ends here.
 
+		showInTaskbar = false;
 		textBox.text = import("legend.txt");
 		btnClose.click ~= (Control c, EventArgs a) => close();
 
@@ -49,6 +50,7 @@ class Legend: dfl.form.Form
 		resizer.prepare();
 
 		this.activated ~= (Form frm, EventArgs args) => btnClose.focus();
+		this.load ~= (Form f, EventArgs a) => centerToParent(); 
 	}
 
 	override void onResize(EventArgs ea) { resizer.go(); }

@@ -39,6 +39,7 @@ class Details: dfl.form.Form
 
 		btnClose.click ~= (Control c, EventArgs a) => close();
 
+		showInTaskbar = false;
 		resizer = new Resizer(this);
 		resizer.let(lvSubject, XCoord.resizes, YCoord.stays, &lvResized);
 		foreach(lv; [lvNewer, lvSame, lvOlder])
@@ -47,6 +48,8 @@ class Details: dfl.form.Form
 			resizer.let(lbl, XCoord.stays, YCoord.scalesPos);
 		resizer.let(btnClose, XCoord.moves, YCoord.moves);
 		resizer.prepare();
+
+		this.load ~= (Form f, EventArgs a) { centerToParent(); };
 	}
 
 	override void onResize(EventArgs ea) { resizer.go(); }

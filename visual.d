@@ -130,13 +130,14 @@ class Visual : dfl.form.Form
 		btnCancel.click ~= &CancelSearch;
 		btnHelp.click ~= &OnHelp;
 
+		showInTaskbar = false;
 		timer = new Timer;
 		timer.interval = 100;
 		timer.tick ~= &OnTimer;
 		timer.start();
 		this.closing ~= &OnClosing;
 		this.minimumSize = Size(500, 200);
-		this.load ~= (Form f, EventArgs a) { taskbarProgress = new TaskBarProgress(handle); };
+		this.load ~= (Form f, EventArgs a) { taskbarProgress = new TaskBarProgress(owner.handle); };
 
 		cancelSearch = false;
 

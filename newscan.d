@@ -140,7 +140,9 @@ class NewScan: dfl.form.Form
 		btnCancel.bounds = dfl.all.Rect(368, 208, 72, 24);
 		btnCancel.parent = this;
 		//~Entice Designer 0.8.5.02 code ends here.
-
+		
+		formBorderStyle = FormBorderStyle.FIXED_3D;
+		showInTaskbar = false;
 		btnBrowse.click ~= &OnBrowse;
 		auto t = Clock.currTime();
 		tbxTime.text = (cast(DateTime)t).toSimpleString();
@@ -170,7 +172,7 @@ class NewScan: dfl.form.Form
 
 	void OnLoad(Form f, EventArgs a) 
 	{ 
-		taskbarProgress = new TaskBarProgress(handle); 
+		taskbarProgress = new TaskBarProgress(owner.handle); 
 		centerToParent();
 	}
 

@@ -43,8 +43,11 @@ class About: dfl.form.Form
 		btnClose.parent = this;
 		//~Entice Designer 0.8.5.02 code ends here.
 
+		showInTaskbar = false;
+		formBorderStyle = FormBorderStyle.FIXED_3D;
 		btnClose.click ~= (Control c, EventArgs a) => close();
 		btnSite.click ~= &OnSite;
+		this.load ~= (Form f, EventArgs a) => centerToParent(); 
 	}
 
 	void OnSite(Control sender, EventArgs ea)
