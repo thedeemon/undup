@@ -1,7 +1,7 @@
 module visual;
-import dfl.all, rel, fileops, messages, box, details, legend, std.range, std.algorithm, std.stdio, 
-	std.math, std.conv,	std.c.windows.windows, dfl.internal.winapi, std.string, std.concurrency, 
-	std.typecons, core.time, core.memory;
+import dfl.all, rel, fileops, messages, box, details, legend, taskbar, std.range, std.algorithm, 
+	std.stdio, std.math, std.conv,	std.c.windows.windows, dfl.internal.winapi, std.string, 
+	std.concurrency, std.typecons, core.time, core.memory;
 
 class MyPictureBox : PictureBox {
 	this() 
@@ -60,6 +60,7 @@ class Visual : dfl.form.Form
 	Timer timer; // for receiving messages
 	Font font;
 	int errors;
+	TaskBarProgress taskbarProgress;
 
 	this(DirInfo[] _dirs, string[] names) {
 		W = 1040; H = 670;
@@ -135,6 +136,7 @@ class Visual : dfl.form.Form
 		timer.start();
 		this.closing ~= &OnClosing;
 		this.minimumSize = Size(500, 200);
+		this.load ~= (Form f, EventArgs a) { taskbarProgress = new TaskBarProgress(handle); };
 
 		cancelSearch = false;
 
@@ -324,10 +326,13 @@ class Visual : dfl.form.Form
 			btnSearch.visible = true;
 			btnCancel.visible = false;
 			progressBar.value = 0;
+			taskbarProgress.enabled = false;
 		} else
 		if (!msgAnalyzing.isNull) {
 			lblStatus.text = format("analyzing %s [%s]", msgAnalyzing.name, msgAnalyzing.sz);
-			progressBar.value = cast(int) (msgAnalyzing.progress * 1000);
+			int prg = cast(int) (msgAnalyzing.progress * 1000);
+			progressBar.value = prg;
+			taskbarProgress.SetValue(prg, 1000);
 			version (verbose) writeln("got msgAnalyzing ", nmsgAn);
 		}
 
@@ -352,6 +357,7 @@ class Visual : dfl.form.Form
 		complete = false;
 		nmsgAn = 0;
 		EmptyMsgQueue();
+		taskbarProgress.enabled = true;
 		spawnLinked(&searchDups, cast(shared)dirs, thisTid);
 		//searchDups(cast(shared)dirs, thisTid);
 	}
@@ -369,6 +375,7 @@ class Visual : dfl.form.Form
 		btnSearch.visible = true;
 		btnCancel.visible = false;
 		progressBar.value = 0;
+		taskbarProgress.enabled = false;
 		lblStatus.text = "search cancelled";
 		msgAnalyzing.nullify();
 		GC.collect(); GC.minimize();
@@ -412,6 +419,7 @@ class Visual : dfl.form.Form
 		coloring = new Coloring(simboxes, fsimboxes);
 		btnCancel.visible = false;
 		progressBar.visible = false;
+		taskbarProgress.enabled = false;
 		lblStatus.text = "";
 		displayBoxes();
 		picBox.bounds = Rect(0, 0, W, H);

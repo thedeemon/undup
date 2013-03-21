@@ -16,7 +16,6 @@ class Scans: dfl.form.Form
 	Resizer resizer;
 	string restartString;
 
-
 	this(string args)
 	{
 		initializeScans();		
@@ -24,11 +23,7 @@ class Scans: dfl.form.Form
 		int[] bnds = parseVals(args, "bounds=");
 
 		if (indices.length > 0 || bnds.length > 0) {
-			Timer tm = new Timer;
-			tm.interval = 20;
-			tm.tick ~= (Timer t, EventArgs ea) {
-				t.stop();
-
+			this.load ~= (Form f, EventArgs a) {
 				if (bnds.length==4) 
 					this.bounds = Rect(bnds[0], bnds[1], bnds[2], bnds[3]);				
 
@@ -37,9 +32,7 @@ class Scans: dfl.form.Form
 					if (idx < n)
 						lvScans.items[idx].selected = true;
 				version(verbose) writeln("Indices: ", indices, " n=", n);
-				invalidate();
 			};
-			tm.start();
 		}
 	}
 	
@@ -61,7 +54,7 @@ class Scans: dfl.form.Form
 		// Do not manually modify this function.
 		//~Entice Designer 0.8.5.02 code begins here.
 		//~DFL Form
-		text = "Scans";
+		text = "Undup";
 		clientSize = dfl.all.Size(784, 618);
 		//~DFL dfl.listview.ListView=lvScans
 		lvScans = new dfl.listview.ListView();

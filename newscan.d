@@ -1,5 +1,5 @@
 module newscan;
-import dfl.all, fileops, messages, core.sys.windows.windows, std.utf, std.conv, std.stdio, std.datetime, 
+import dfl.all, fileops, messages, taskbar, core.sys.windows.windows, std.utf, std.conv, std.stdio, std.datetime, 
  std.concurrency, std.file, std.string, std.container, std.typecons, std.outbuffer, std.algorithm, 
  std.range, std.array;
 
@@ -26,6 +26,7 @@ class NewScan: dfl.form.Form
 	
 	long timeStamp, volumeSize;
 	Tid worker;
+	TaskBarProgress taskbarProgress;
 	Timer timer; // for receiving messages
 	bool running;
 	
@@ -156,13 +157,21 @@ class NewScan: dfl.form.Form
 		timer.start();
 
 		cancelScan = false;
-		this.closing ~= &OnClosing;
+		this.closing ~= &OnClosing;		
+		this.load ~= &OnLoad;
 	}
 
 	void OnClosing(Form f, CancelEventArgs c)
 	{
 		cancelScan = true;
+		taskbarProgress.Clear();
 		timer.stop();
+	}
+
+	void OnLoad(Form f, EventArgs a) 
+	{ 
+		taskbarProgress = new TaskBarProgress(handle); 
+		centerToParent();
 	}
 
 	void OnBrowse(Control, EventArgs)
@@ -206,6 +215,7 @@ class NewScan: dfl.form.Form
 			EnableStart(true);
 			lblStatus.text = "cancelled";
 			running = false;
+			taskbarProgress.enabled = false;
 		} else {			
 			close();
 		}
@@ -238,6 +248,7 @@ class NewScan: dfl.form.Form
 			auto str = "Scanning " ~ msgScanning.name;
 			lblStatus.text = str;
 			progressBar.value = msgScanning.i;
+			taskbarProgress.SetValue(msgScanning.i, progressBar.maximum);
 			version (verbose) writeln("lblStatus.text = ", str);
 		}
 	}
@@ -246,6 +257,8 @@ class NewScan: dfl.form.Form
 	{
 		progressBar.maximum = m.n;
 		progressBar.value = 0;
+		taskbarProgress.enabled = true;
+		taskbarProgress.SetValue(0, m.n);
 		version (verbose) writeln("RcvMsgNumOfDirs ", m.n);
 	}
 
@@ -261,6 +274,7 @@ class NewScan: dfl.form.Form
 		lblStatus.text = format("Done! %s files, %s dirs.", m.files, m.dirs);
 		running = false;
 		progressBar.value = 0;
+		taskbarProgress.enabled = false;
 		btnCancel.text = "Close";
 		version (verbose) writeln("RcvMsgDone");
 		timer.stop();
