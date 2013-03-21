@@ -358,7 +358,7 @@ DirInfo[] useIndex(DirInfo0[] ds)
 	scope DirInfo[] idx = makeIndex(dirs);
 	foreach(i; 0..dirs.length) {
 		dirs[i].parent = ds[i].parentID >= 0 ? idx[ds[i].parentID] : null;
-		dirs[i].subdirs = ds[i].subdirs.map!(k => idx[k]).filter!(p => p !is null).array;
+		dirs[i].subdirs = ds[i].subdirs.map!(k => k >= 0 && k < idx.length ? idx[k] : null).filter!(p => p !is null).array;
 	}
 	return dirs;
 }
