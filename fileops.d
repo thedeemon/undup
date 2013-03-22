@@ -1,6 +1,7 @@
 module fileops;
-import rel, messages, std.stdio, std.file, std.string, std.container, std.datetime, core.stdc.time, std.outbuffer, std.typecons, 
-	std.traits, std.stream, std.range, std.algorithm, std.concurrency, std.math : abs;
+import rel, messages, std.stdio, std.file, std.string, std.container, std.datetime, core.stdc.time, 
+	std.outbuffer, std.typecons, std.traits, std.stream, std.range, std.algorithm, std.concurrency, 
+	core.memory, std.math : abs;
 
 string justName(string pathname)
 {
@@ -306,12 +307,14 @@ DirInfo0[] readDump(string fname)
 	DumpHeader hdr;
 	load(hdr, ms);
 
+	GC.disable();
 	while(ms.position < ms.size) {
 		DirInfo0 di = new DirInfo0;
 		load(di, ms);
 		a ~= di;
 	}
 	delete ms;	delete bytes;
+	GC.enable();
 	return a;
 }
 
