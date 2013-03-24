@@ -168,8 +168,9 @@ class Visual : dfl.form.Form
 
 	void Resized()
 	{
-		version (verbose) writeln("resized ", lastSizeChange.sz);
+		version (verbose) writeln("resized ", lastSizeChange.sz, " clientSize: ", clientSize);
 		lastSizeChange.nullify();
+		if (clientSize.height < 100) return; //just minimized
 		W = clientSize.width;
 		int prgh = progressBar.visible ? 24 : 0;
 		H = clientSize.height - (36 + prgh);
