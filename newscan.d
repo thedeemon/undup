@@ -25,7 +25,7 @@ class NewScan: dfl.form.Form
 	//~Entice Designer variables end here.
 	
 	long timeStamp, volumeSize;
-	Tid worker;
+	Tid worker, mytid;
 	TaskBarProgress taskbarProgress;
 	Timer timer; // for receiving messages
 	bool running;
@@ -153,6 +153,7 @@ class NewScan: dfl.form.Form
 		progressBar.minimum = 0;
 		progressBar.maximum = 100;
 
+		mytid = thisTid;
 		timer = new Timer;
 		timer.interval = 100;
 		timer.tick ~= &OnTimer;
@@ -206,7 +207,7 @@ class NewScan: dfl.form.Form
 		EnableStart(false);
 		cancelScan = false;
 		running = true;
-		EmptyMsgQueue();
+		EmptyMsgQueue(thisTid);
 		worker = spawn(&makeScan, fname, hdr, thisTid);
 	}
 
@@ -233,7 +234,7 @@ class NewScan: dfl.form.Form
 		progressBar.value = 0;
 	}
 
-	void EmptyMsgQueue()
+	void EmptyMsgQueue(Tid t)
 	{
 		while(receiveTimeout(dur!"msecs"(0), 
 				(MsgNumOfDirs m) {}, 

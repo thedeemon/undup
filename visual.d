@@ -61,6 +61,7 @@ class Visual : dfl.form.Form
 	Font font;
 	int errors;
 	TaskBarProgress taskbarProgress;
+	Tid mytid;
 
 	this(DirInfo[] _dirs, string[] names) {
 		W = 1040; H = 670;
@@ -130,6 +131,7 @@ class Visual : dfl.form.Form
 		btnCancel.click ~= &CancelSearch;
 		btnHelp.click ~= &OnHelp;
 
+		mytid = thisTid;
 		showInTaskbar = false;
 		timer = new Timer;
 		timer.interval = 100;
@@ -291,7 +293,7 @@ class Visual : dfl.form.Form
 		}
 	}
 
-	void EmptyMsgQueue()
+	void EmptyMsgQueue(Tid t)
 	{
 		while(receiveTimeout(dur!"msecs"(0), 
 					(MsgAnalyzing m) {}, 
@@ -358,7 +360,8 @@ class Visual : dfl.form.Form
 		cancelSearch = false;
 		complete = false;
 		nmsgAn = 0;
-		EmptyMsgQueue();
+		
+		EmptyMsgQueue(thisTid);
 		taskbarProgress.enabled = true;
 		spawnLinked(&searchDups, cast(shared)dirs, thisTid);
 		//searchDups(cast(shared)dirs, thisTid);
@@ -446,6 +449,10 @@ shared bool cancelSearch;
 
 template ResItem(T) { alias ResItem = Similar!(T[], T); }
 
+auto getBigFiles(DirInfo di)  {
+	return di.files.filter!(fi => fi.size > 50_000_000L).map!(fi => new PFileInfo(fi, di));
+}
+
 void searchDups(shared(DirInfo[]) _dirs, Tid gui_tid)
 {
 	DirInfo[] dirs = cast(DirInfo[]) _dirs;
@@ -471,9 +478,7 @@ void searchDups(shared(DirInfo[]) _dirs, Tid gui_tid)
 		reslist = reslist.filter!(r => r.subj.parent !is null ? (r.subj.parent.ID !in reported) : true).array;
 
 		//big files
-		PFileInfo[] bigfiles = dirs.map!(
-										 di => di.files.filter!(fi => fi.size > 50_000_000L).map!(fi => new PFileInfo(fi, di))									 
-										 ).joiner.array;
+		PFileInfo[] bigfiles = dirs.map!getBigFiles.joiner.array;
 		ResItem!PFileInfo[] freslist;
 
 		Rel compf(PFileInfo a, PFileInfo b) { return relate(a,b,rc); }
