@@ -1,6 +1,8 @@
 ## Undup
 
-Storage space visualization and duplicate files/directories search utility.
+More details: http://www.infognition.com/undup/
+
+This simple utility can visualize contents of your hard drives, external drives, DVDs, USB sticks etc. so that you can see what takes up the space. Then it can search for duplicate files & directories and show which ones are obsolete copies, which ones are newest versions, and which are just exact copies of each other. 
 
 ![screenshot][1]
 
@@ -53,10 +55,10 @@ If two folders contain files considered different (same name & time but differen
 Directories and big files are grouped by name similarity, and comparison is performed between all objects inside each group. A few objects form a group if one of them has a name which serves as a prefix for names of all the others. E.g. "cats", "cat01", "cat", "cat2" and "cats3" will get into one group but "more cats" will not land into this group.
 
 ### Technical details
-Written in D language. Built using DMD 2.062. Uses DFL for GUI, take it from https://github.com/Rayerd/dfl (only needed for compiling, the binary does not need any additional dlls). 
+Written in D language. Uses DFL for GUI, take it from https://github.com/Rayerd/dfl (only needed for compiling, the binary does not need any additional dlls). 
 
 DFL (C) 2004-2010 Christopher E. Miller
 
 License: MIT (see license.txt).
 
-[1]: https://bitbucket.org/infognition/undup/downloads/undup500.jpg
+[1]: http://www.infognition.com/undup/undup500.jpg
